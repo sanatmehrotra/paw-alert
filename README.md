@@ -1,40 +1,79 @@
-# PawAlert — The 911 for India's Strays
+# 🐾 PawAlert — The 911 for India's Strays
 
-AI-powered stray animal rescue coordination platform. Hackathon prototype.
+> India's first AI-powered stray animal rescue coordination platform.  
+> Report an injured animal in 60 seconds. Track the rescue van live. Close the loop.
+
+---
+
+## What & Why
+
+India has **20.3M+ stray animals** on its streets. When a citizen spots an injured dog, cow, or cat — there is no reliable way to summon help. **3,786 registered NGOs** operate in complete isolation with zero shared dispatch system. **5 animals die every day** from neglect and delayed response.
+
+PawAlert fixes this with a single platform connecting citizens → NGOs → shelters → adoption.
+
+---
+
+## How It Works
+
+```
+Citizen photographs injured animal (PWA, no app download)
+        ↓
+Gemini Vision API scores injury severity 1–10
+        ↓
+Nearest verified NGO van dispatched via geospatial routing
+        ↓
+Citizen tracks van live on map with real-time ETA
+        ↓
+Animal tracked: shelter → treatment → vaccination → adoption
+```
+
+---
+
+## ⚠️ Prototype Notice
+
+This is a **frontend-focused hackathon prototype** built with Next.js API routes and in-memory mock data. The full backend (Supabase + PostGIS + Socket.io + Gemini Vision API + Firebase FCM) is architected and in development — see [`/backend.md`](./backend.md) for the full spec.
+
+Features currently simulated: AI severity scoring · Live GPS tracking · Push notifications · Photo upload · Authentication
+
+---
 
 ## Quick Start
 
 ```bash
-npm install
-npm run dev
+npm install && npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+---
 
 ## Pages
 
 | Route | Description |
 |---|---|
-| `/` | Landing page with particle animation, hero, stats, how-it-works, features |
-| `/report` | 3-step citizen report flow → POSTs to `/api/reports` |
-| `/track` | Live tracking with auto-advancing timeline, progress bar, share link |
-| `/ngo` | NGO dashboard — 5 tabs: Overview, Incoming Alerts, Fleet, Animals, Analytics |
-| `/driver` | **Driver Interface** — rescue mission screen with navigation, stage updates, contacts |
-| `/animal/PAW-DOG-0291` | Animal profile with photo gallery, medical timeline, adoption modal |
-| `/admin` | Admin panel — API-backed stats, NGO verification, activity log, system health |
+| `/` | Landing — hero, stats, how-it-works |
+| `/report` | 3-step citizen report flow |
+| `/track` | Live rescue tracking |
+| `/ngo` | NGO dashboard — alerts, fleet, analytics |
+| `/driver` | Driver mission interface |
+| `/animal/PAW-DOG-0291` | Animal profile + adoption |
+| `/admin` | Admin — NGO verification, platform stats |
+| `/demo` | Judge-friendly page navigator |
 
-## API Routes
+---
 
-| Endpoint | Method | Description |
+## Stack
+
+Next.js 14 · TypeScript · Tailwind CSS · shadcn/ui · Framer Motion · Recharts
+
+---
+
+## Deployment
+
+| Service | Purpose | URL |
 |---|---|---|
-| `/api/reports` | GET | All reports sorted by severity |
-| `/api/reports` | POST | Submit new report (auto-assigns severity + ID) |
-| `/api/animals` | GET | All animals with status |
-| `/api/stats` | GET | Dashboard statistics |
-| `/api/ngo/verify` | POST | Approve or reject an NGO |
+| Vercel | Frontend hosting | `pawalert.vercel.app` |
+| Railway | API server *(coming)* | — |
+| Supabase | Database *(coming)* | — |
 
-## Tech Stack
+---
 
-- Next.js 14 (App Router) · TypeScript · Tailwind CSS v4
-- shadcn/ui · Framer Motion · Recharts · Lucide React
-- In-memory data store (Next.js API routes)
+*Built for India Innovates 2026 · Data: AWBI Annual Report 2023-24 · DAHD 20th Livestock Census*
