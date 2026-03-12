@@ -1,4 +1,4 @@
-# PawAlert — Backend Architecture
+# PawAlert-Backend Architecture
 
 > 🚧 **Work in progress.** This document outlines the planned backend architecture. Everything here is subject to change as development progresses — stack choices, API design, and schema may evolve. Frontend prototype uses in-memory mock data in its place.
 
