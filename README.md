@@ -1,4 +1,4 @@
-# 🐾 PawAlert — The 911 for India's Strays
+# 🐾 PawAlert-The 911 for India's Strays
 
 > India's first AI-powered stray animal rescue coordination platform.  
 > Report an injured animal in 60 seconds. Track the rescue van live. Close the loop.
