@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Phone, Star, CheckCircle2, Circle, Truck, MapPin, Share2, Copy } from "lucide-react";
+import { Phone, Star, CheckCircle2, Circle, Truck, MapPin, Share2 } from "lucide-react";
 import { trackingSteps as initialSteps, driverInfo, rescueId } from "@/lib/mockData";
 import { toast } from "sonner";
 
@@ -25,7 +25,6 @@ export default function TrackPage() {
 
   // Compute progress
   const doneCount = steps.filter((s) => s.status === "done").length;
-  const currentIdx = steps.findIndex((s) => s.status === "current");
   const progressPercent = Math.round(((doneCount + 0.5) / steps.length) * 100);
 
   // Auto-advance timeline every 8 seconds

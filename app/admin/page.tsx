@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, X, FileText, AlertTriangle, Activity, Server, Database, Wifi } from "lucide-react";
+import { Check, FileText, AlertTriangle, Activity, Server, Database, Wifi } from "lucide-react";
 import { ngoVerificationQueue, type NgoRow } from "@/lib/mockData";
 import { toast } from "sonner";
 
-const fadeUp = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fadeUp: any = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
     opacity: 1,

@@ -6,7 +6,8 @@ import { Upload, MapPin, CheckCircle2, Camera, ArrowRight, Loader2, FileText } f
 import { speciesOptions, severityResult } from "@/lib/mockData";
 import Link from "next/link";
 
-const fadeUp = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fadeUp: any = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
 };

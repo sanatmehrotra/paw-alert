@@ -41,7 +41,8 @@ const sidebarLinks = [
   { label: "Analytics", icon: BarChart3 },
 ];
 
-const fadeUp = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fadeUp: any = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
     opacity: 1,

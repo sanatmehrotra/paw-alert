@@ -87,7 +87,8 @@ function ParticleGrid() {
   return <canvas ref={canvasRef} className="absolute inset-0 z-0" />;
 }
 
-const fadeUp = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fadeUp: any = {
   hidden: { opacity: 0, y: 30 },
   visible: (i: number) => ({
     opacity: 1,
