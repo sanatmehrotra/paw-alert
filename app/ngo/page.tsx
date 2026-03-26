@@ -124,9 +124,42 @@ function OverviewTab() {
 
 // ---- Incoming Alerts Tab ----
 function IncomingAlerts() {
-  const [cards, setCards] = useState(
-    alertCards.map((c) => ({ ...c, accepted: false }))
-  );
+  const [cards, setCards] = useState<(AlertCard & { accepted?: boolean })[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/reports")
+      .then(r => r.json())
+      .then((data: Array<{
+        id: string;
+        severity: number;
+        severityLabel: string;
+        species: string;
+        location: string;
+        createdAt: string;
+        status: string;
+      }>) => {
+        const severityColors: Record<string, string> = {
+          CRITICAL: "#FF4F4F", HIGH: "#E47F42", MODERATE: "#FFE00F", LOW: "#4FC97E"
+        };
+        const speciesIcons: Record<string, string> = {
+          Dog: "🐕", Cat: "🐈", Cow: "🐄", Bird: "🐦", Other: "🐾"
+        };
+        setCards(data.map(r => ({
+          id: Number(r.id.replace(/\D/g, "").slice(-6)) || Math.floor(Math.random() * 10000),
+          severity: r.severity,
+          severityLabel: r.severityLabel,
+          color: severityColors[r.severityLabel] || "#E47F42",
+          animal: r.species,
+          animalIcon: speciesIcons[r.species] || "🐾",
+          location: r.location,
+          reportedAgo: new Date(r.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          accepted: r.status === "accepted" || r.status === "dispatched",
+        })));
+      })
+      .catch(() => setCards(alertCards.map(c => ({ ...c, accepted: false }))))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleAccept = (id: number) => {
     setCards((prev) =>
@@ -137,6 +170,14 @@ function IncomingAlerts() {
     });
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-paw-muted text-sm animate-pulse">Loading alerts...</div>
+      </div>
+    );
+  }
+
   return (
     <motion.div className="space-y-4" initial="hidden" animate="visible">
       <div className="flex items-center justify-between">
@@ -145,7 +186,11 @@ function IncomingAlerts() {
           {cards.filter((c) => !c.accepted).length} pending
         </span>
       </div>
-      {cards.map((card, i) => (
+      {cards.length === 0 ? (
+        <div className="rounded-xl border border-paw-orange/15 bg-paw-card p-10 text-center text-paw-muted text-sm">
+          No reports yet — new submissions will appear here instantly.
+        </div>
+      ) : cards.map((card, i) => (
         <motion.div
           key={card.id}
           custom={i}
