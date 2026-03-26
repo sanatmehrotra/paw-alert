@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check, FileText, AlertTriangle, Activity, Server, Database, Wifi } from "lucide-react";
-import { ngoVerificationQueue, type NgoRow } from "@/lib/mockData";
+import { type NgoRow } from "@/lib/mockData";
 import { toast } from "sonner";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,9 +42,7 @@ interface StatsData {
 }
 
 export default function AdminPanel() {
-  const [rows, setRows] = useState<(NgoRow & { verified?: boolean })[]>(
-    ngoVerificationQueue.map((r) => ({ ...r, verified: false }))
-  );
+  const [rows, setRows] = useState<(NgoRow & { verified?: boolean })[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
 
   // Fetch stats from API
@@ -53,6 +51,12 @@ export default function AdminPanel() {
       .then((r) => r.json())
       .then((data) => setStats(data))
       .catch(() => setStats({ totalRescues: 847, activeNgos: 34, pendingVerifications: 6, animalsInShelters: 312 }));
+      
+    // Fetch NGOs
+    fetch("/api/ngo")
+      .then(r => r.json())
+      .then(data => setRows(data.map((r: NgoRow) => ({ ...r, verified: r.status === "Verified" }))))
+      .catch(() => {});
   }, []);
 
   const adminStats = stats
