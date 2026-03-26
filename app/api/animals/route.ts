@@ -1,17 +1,33 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  return NextResponse.json(store.getAnimals());
+  const { data, error } = await supabaseAdmin
+    .from("animals")
+    .select("*")
+    .order("rescue_date", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(data);
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // Assuming adding an animal in a realistic scenario
-    // For now, in our simple prototype store, we didn't add an `addAnimal` method.
-    // We'll just return a success payload.
-    return NextResponse.json({ success: true, animal: body }, { status: 201 });
+    const { data, error } = await supabaseAdmin
+      .from("animals")
+      .insert(body)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }

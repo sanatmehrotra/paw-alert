@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  return NextResponse.json(store.ngos);
+  const { data, error } = await supabaseAdmin
+    .from("ngos")
+    .select("*")
+    .order("id", { ascending: true });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(data);
 }

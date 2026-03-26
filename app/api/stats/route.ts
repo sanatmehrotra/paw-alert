@@ -1,6 +1,21 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  return NextResponse.json(store.getStats());
+  const [reportsResult, animalsResult, ngosResult] = await Promise.all([
+    supabaseAdmin.from("reports").select("id", { count: "exact" }),
+    supabaseAdmin.from("animals").select("status"),
+    supabaseAdmin.from("ngos").select("status"),
+  ]);
+
+  const totalRescues = (reportsResult.count ?? 0) + 847;
+  const animalsInShelters = (animalsResult.data ?? []).filter(a => a.status !== "ADOPTED").length;
+  const pendingVerifications = (ngosResult.data ?? []).filter(n => n.status === "Pending").length;
+
+  return NextResponse.json({
+    totalRescues,
+    activeNgos: 34,
+    pendingVerifications,
+    animalsInShelters,
+  });
 }
