@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -15,7 +15,7 @@ import {
   Zap,
   Wrench,
 } from "lucide-react";
-import { alertCards, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
+import { alertCards, type AlertCard, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
 import { toast } from "sonner";
 import {
   BarChart,
