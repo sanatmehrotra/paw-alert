@@ -17,7 +17,8 @@ import {
   LogOut,
   Loader2,
 } from "lucide-react";
-import { alertCards, type AlertCard, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
+import { alertCards, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
+import { getTagStyle } from "@/lib/gemini-triage";
 import { toast } from "sonner";
 import ProtectedRoute from "@/components/protected-route";
 import { useAuth } from "@/components/auth-provider";
@@ -152,7 +153,9 @@ function IncomingAlerts() {
           color: severityColors[r.severity_label] || "#FFE00F",
           animalIcon: speciesIcons[r.species] || "🐾",
           accepted: r.status === "accepted" || r.status === "dispatched",
-          image_url: r.image_url
+          image_url: r.image_url,
+          injury_tags: r.injury_tags || [],
+          ai_description: r.ai_description || null,
         }));
         setCards(reports);
       })
@@ -240,6 +243,26 @@ function IncomingAlerts() {
                 </span>
               </div>
               <div className="text-sm text-paw-muted">📍 {card.location} · {card.reportedAgo}</div>
+              {card.ai_description && (
+                <div className="text-xs text-paw-muted/70 mt-1 line-clamp-2">{card.ai_description}</div>
+              )}
+              {card.injury_tags && card.injury_tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {card.injury_tags.map((tag: string) => {
+                    const style = getTagStyle(tag);
+                    return (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{ backgroundColor: style.bg, color: style.text }}
+                      >
+                        <span>{style.emoji}</span>
+                        {tag}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             
             {!card.accepted ? (

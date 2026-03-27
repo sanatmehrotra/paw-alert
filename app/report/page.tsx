@@ -2,15 +2,49 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, MapPin, CheckCircle2, Camera, ArrowRight, Loader2, FileText } from "lucide-react";
-import { speciesOptions, severityResult } from "@/lib/mockData";
+import {
+  Upload,
+  MapPin,
+  CheckCircle2,
+  Camera,
+  ArrowRight,
+  Loader2,
+  FileText,
+  AlertTriangle,
+} from "lucide-react";
+import { speciesOptions } from "@/lib/mockData";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { getTagStyle } from "@/lib/gemini-triage";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fadeUp: any = {
   hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: "easeOut" },
+  },
 };
+
+interface TriageResult {
+  severity: number;
+  severityLabel: string;
+  description: string;
+  tags: string[];
+  note: string;
+}
+
+interface FormData {
+  species: string;
+  description: string;
+  uploaded: boolean;
+  imageFile: File | null;
+  imageUrl: string | null;
+  locationStatus: string;
+  lat: number;
+  lng: number;
+}
 
 function StepIndicator({ current }: { current: number }) {
   const steps = ["Photo & Location", "AI Analysis", "Submitted"];
@@ -55,55 +89,113 @@ function Step1({
   setFormData,
 }: {
   onNext: () => void;
-  formData: { species: string; description: string; uploaded: boolean; imageFile: File | null; locationStatus: string; lat: number; lng: number };
-  setFormData: (d: any) => void;
+  formData: FormData;
+  setFormData: (d: FormData) => void;
 }) {
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    setFormData({ ...formData, uploaded: false, imageFile: file });
+    setUploading(true);
+
+    try {
+      // Upload to Supabase Storage immediately
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("animal-photos")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("animal-photos").getPublicUrl(uploadData.path);
+
+      setFormData({
+        ...formData,
+        uploaded: true,
+        imageFile: file,
+        imageUrl: publicUrl,
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      // Still mark as uploaded so user can proceed (triage will fallback)
       setFormData({ ...formData, uploaded: true, imageFile: file });
+    } finally {
+      setUploading(false);
     }
   };
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="visible" className="mx-auto max-w-xl space-y-8">
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      className="mx-auto max-w-xl space-y-8"
+    >
       {/* Upload zone */}
       <div
         className={`group relative flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all duration-300 ${
-          formData.uploaded
+          uploading
+            ? "border-paw-orange bg-paw-orange/5"
+            : formData.uploaded
             ? "border-paw-green bg-paw-green/5"
             : "border-paw-orange/40 bg-paw-card hover:border-paw-orange hover:bg-paw-orange/5"
         }`}
-        onClick={() => document.getElementById("fileInput")?.click()}
+        onClick={() =>
+          !uploading && document.getElementById("fileInput")?.click()
+        }
       >
         <input
           type="file"
           id="fileInput"
           accept="image/*"
+          capture="environment"
           className="hidden"
           onChange={handleFileChange}
         />
-        {formData.uploaded ? (
+        {uploading ? (
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-12 w-12 animate-spin text-paw-orange" />
+            <span className="text-paw-orange font-medium">
+              Uploading photo…
+            </span>
+          </div>
+        ) : formData.uploaded ? (
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             className="flex flex-col items-center gap-3"
           >
             <CheckCircle2 className="h-12 w-12 text-paw-green" />
-            <span className="text-paw-green font-medium">Photo uploaded successfully</span>
+            <span className="text-paw-green font-medium">
+              Photo uploaded successfully
+            </span>
             <div className="mt-2 flex gap-2 items-center rounded-lg bg-paw-card border border-paw-green/20 px-3 py-2">
               {formData.imageFile ? (
-                <img 
-                  src={URL.createObjectURL(formData.imageFile)} 
-                  alt="Preview" 
+                <img
+                  src={URL.createObjectURL(formData.imageFile)}
+                  alt="Preview"
                   className="h-12 w-12 rounded-lg object-cover"
                 />
               ) : (
-                <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-paw-orange/30 to-paw-orange/10 flex items-center justify-center text-2xl">🐕</div>
+                <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-paw-orange/30 to-paw-orange/10 flex items-center justify-center text-2xl">
+                  🐕
+                </div>
               )}
               <div className="text-xs text-paw-muted">
-                <div className="font-medium text-paw-text">{formData.imageFile?.name || "photo.jpg"}</div>
-                <div>2.4 MB · 4032×3024</div>
+                <div className="font-medium text-paw-text">
+                  {formData.imageFile?.name || "photo.jpg"}
+                </div>
+                <div>
+                  {formData.imageFile
+                    ? `${(formData.imageFile.size / (1024 * 1024)).toFixed(1)} MB`
+                    : "2.4 MB"}
+                </div>
               </div>
             </div>
           </motion.div>
@@ -124,17 +216,35 @@ function Step1({
       </div>
 
       {/* GPS Location */}
-      <div className={`flex items-center gap-3 rounded-xl border p-4 ${
-        formData.lat ? "border-paw-green/30 bg-paw-green/5" : "border-paw-orange/30 bg-paw-orange/5 animate-pulse"
-      }`}>
-        <MapPin className={`h-5 w-5 ${formData.lat ? "text-paw-green" : "text-paw-orange"}`} />
+      <div
+        className={`flex items-center gap-3 rounded-xl border p-4 ${
+          formData.lat
+            ? "border-paw-green/30 bg-paw-green/5"
+            : "border-paw-orange/30 bg-paw-orange/5 animate-pulse"
+        }`}
+      >
+        <MapPin
+          className={`h-5 w-5 ${
+            formData.lat ? "text-paw-green" : "text-paw-orange"
+          }`}
+        />
         <div>
-          <div className={`flex items-center gap-2 text-sm font-medium ${formData.lat ? "text-paw-green" : "text-paw-orange"}`}>
-            {formData.lat ? <CheckCircle2 className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+          <div
+            className={`flex items-center gap-2 text-sm font-medium ${
+              formData.lat ? "text-paw-green" : "text-paw-orange"
+            }`}
+          >
+            {formData.lat ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
             {formData.locationStatus}
           </div>
           <div className="text-xs text-paw-muted">
-            {formData.lat ? `${formData.lat.toFixed(4)}° N, ${formData.lng.toFixed(4)}° E` : "Determining precisely..."}
+            {formData.lat
+              ? `${formData.lat.toFixed(4)}° N, ${formData.lng.toFixed(4)}° E`
+              : "Determining precisely..."}
           </div>
         </div>
       </div>
@@ -168,7 +278,9 @@ function Step1({
         </label>
         <textarea
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, description: e.target.value })
+          }
           placeholder="Describe the animal's condition, any visible injuries, behavior..."
           className="w-full resize-none rounded-xl border border-paw-orange/20 bg-paw-card p-4 text-sm text-paw-text placeholder:text-paw-muted/50 focus:border-paw-orange focus:outline-none"
           rows={3}
@@ -178,7 +290,7 @@ function Step1({
       {/* Next button */}
       <button
         onClick={onNext}
-        disabled={!formData.uploaded || !formData.species}
+        disabled={!formData.uploaded || !formData.species || uploading}
         className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange py-4 text-lg font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-paw-orange/25 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Next
@@ -188,16 +300,88 @@ function Step1({
   );
 }
 
-function Step2({ onNext }: { onNext: () => void }) {
+function Step2({
+  imageUrl,
+  onNext,
+}: {
+  imageUrl: string | null;
+  onNext: (triage: TriageResult) => void;
+}) {
   const [analyzing, setAnalyzing] = useState(true);
+  const [triage, setTriage] = useState<TriageResult | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setAnalyzing(false), 2000);
-    return () => clearTimeout(timer);
-  }, []);
+    async function runTriage() {
+      if (!imageUrl) {
+        // No image URL — use fallback
+        setTriage({
+          severity: 5,
+          severityLabel: "MODERATE",
+          description:
+            "Photo could not be analyzed. Manual assessment recommended.",
+          tags: ["needs assessment"],
+          note: "Image unavailable — rescue team should assess on-site.",
+        });
+        setAnalyzing(false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/triage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_url: imageUrl }),
+        });
+
+        if (!res.ok) throw new Error("Triage API failed");
+
+        const result: TriageResult = await res.json();
+        setTriage(result);
+      } catch (err) {
+        console.error("Triage error:", err);
+        setError(true);
+        setTriage({
+          severity: 5,
+          severityLabel: "MODERATE",
+          description:
+            "AI analysis encountered an error. Manual review recommended.",
+          tags: ["needs assessment"],
+          note: "Automated triage failed — rescue team should assess on-site.",
+        });
+      } finally {
+        setAnalyzing(false);
+      }
+    }
+
+    runTriage();
+  }, [imageUrl]);
+
+  // Severity color based on level
+  const getSeverityColor = (severity: number) => {
+    if (severity >= 9) return "#FF4F4F";
+    if (severity >= 7) return "#E47F42";
+    if (severity >= 4) return "#FFE00F";
+    return "#4FC97E";
+  };
+
+  const getSeverityGradient = (severity: number) => {
+    if (severity >= 9)
+      return "from-red-500 to-orange-500";
+    if (severity >= 7)
+      return "from-paw-orange to-paw-red";
+    if (severity >= 4)
+      return "from-yellow-500 to-orange-400";
+    return "from-paw-green to-emerald-400";
+  };
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="visible" className="mx-auto max-w-xl">
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      className="mx-auto max-w-xl"
+    >
       <AnimatePresence mode="wait">
         {analyzing ? (
           <motion.div
@@ -207,15 +391,35 @@ function Step2({ onNext }: { onNext: () => void }) {
             exit={{ opacity: 0 }}
             className="flex flex-col items-center gap-6 py-20"
           >
-            <Loader2 className="h-16 w-16 animate-spin text-paw-orange" />
+            <div className="relative">
+              <Loader2 className="h-16 w-16 animate-spin text-paw-orange" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-2xl">🧠</span>
+              </div>
+            </div>
             <p className="text-xl font-medium text-paw-orange">
-              Analysing injury with AI Vision...
+              Analysing injury with Gemini Vision AI…
             </p>
-            <p className="text-sm text-paw-muted">
-              Our model is examining the photo for injuries
+            <p className="text-sm text-paw-muted max-w-sm text-center">
+              Our AI model is examining the photo for injuries, assessing
+              severity, and identifying injury types
             </p>
+            <div className="flex gap-1.5 mt-2">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-paw-orange"
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{
+                    duration: 1.2,
+                    repeat: Infinity,
+                    delay: i * 0.3,
+                  }}
+                />
+              ))}
+            </div>
           </motion.div>
-        ) : (
+        ) : triage ? (
           <motion.div
             key="result"
             initial={{ opacity: 0, y: 20 }}
@@ -223,21 +427,38 @@ function Step2({ onNext }: { onNext: () => void }) {
             transition={{ duration: 0.6 }}
             className="space-y-6"
           >
+            {/* Error banner */}
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg border border-paw-orange/30 bg-paw-orange/5 px-4 py-3 text-sm text-paw-orange">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                AI analysis encountered an issue — showing fallback assessment
+              </div>
+            )}
+
             {/* Severity card */}
             <div className="rounded-xl border border-paw-orange/30 bg-paw-card p-8">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <p className="text-sm text-paw-muted mb-1">AI Severity Assessment</p>
-                  <span className="inline-flex items-center rounded-full bg-paw-orange/15 px-3 py-1 text-sm font-bold text-paw-orange">
-                    {severityResult.label}
+                  <p className="text-sm text-paw-muted mb-1">
+                    AI Severity Assessment
+                  </p>
+                  <span
+                    className="inline-flex items-center rounded-full px-3 py-1 text-sm font-bold"
+                    style={{
+                      backgroundColor: `${getSeverityColor(triage.severity)}20`,
+                      color: getSeverityColor(triage.severity),
+                    }}
+                  >
+                    {triage.severityLabel}
                   </span>
                 </div>
                 <div className="text-right">
-                  <div className="text-6xl font-black text-paw-orange">
-                    {severityResult.score}
-                    <span className="text-2xl text-paw-muted">
-                      /{severityResult.maxScore}
-                    </span>
+                  <div
+                    className="text-6xl font-black"
+                    style={{ color: getSeverityColor(triage.severity) }}
+                  >
+                    {triage.severity}
+                    <span className="text-2xl text-paw-muted">/10</span>
                   </div>
                 </div>
               </div>
@@ -246,42 +467,83 @@ function Step2({ onNext }: { onNext: () => void }) {
               <div className="mb-6">
                 <div className="h-3 w-full overflow-hidden rounded-full bg-paw-bg">
                   <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-paw-orange to-paw-red"
+                    className={`h-full rounded-full bg-gradient-to-r ${getSeverityGradient(triage.severity)}`}
                     initial={{ width: 0 }}
-                    animate={{ width: `${(severityResult.score / severityResult.maxScore) * 100}%` }}
+                    animate={{
+                      width: `${(triage.severity / 10) * 100}%`,
+                    }}
                     transition={{ duration: 1, delay: 0.3 }}
                   />
                 </div>
               </div>
 
+              {/* AI Description */}
               <p className="text-paw-text leading-relaxed">
-                {severityResult.description}
+                {triage.description}
               </p>
-              <p className="mt-4 text-sm text-paw-gold">
-                ⚡ {severityResult.note}
+
+              {/* Injury Tags */}
+              {triage.tags.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-xs text-paw-muted mb-2.5 uppercase tracking-wider font-medium">
+                    Detected Injuries
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {triage.tags.map((tag) => {
+                      const style = getTagStyle(tag);
+                      return (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold"
+                          style={{
+                            backgroundColor: style.bg,
+                            color: style.text,
+                          }}
+                        >
+                          <span>{style.emoji}</span>
+                          {tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Triage note */}
+              <p className="mt-5 text-sm text-paw-gold flex items-start gap-2">
+                <span>⚡</span>
+                <span>{triage.note}</span>
               </p>
             </div>
 
             <button
-              onClick={onNext}
+              onClick={() => onNext(triage)}
               className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange py-4 text-lg font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-paw-orange/25"
             >
               Confirm & Submit
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </button>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </motion.div>
   );
 }
 
-function Step3({ rescueId, submitting }: { rescueId: string; submitting: boolean }) {
+function Step3({
+  rescueId,
+  submitting,
+}: {
+  rescueId: string;
+  submitting: boolean;
+}) {
   if (submitting) {
     return (
       <div className="flex flex-col items-center gap-6 py-20">
         <Loader2 className="h-12 w-12 animate-spin text-paw-orange" />
-        <p className="text-lg font-medium text-paw-muted">Submitting report...</p>
+        <p className="text-lg font-medium text-paw-muted">
+          Submitting report…
+        </p>
       </div>
     );
   }
@@ -296,15 +558,24 @@ function Step3({ rescueId, submitting }: { rescueId: string; submitting: boolean
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+        transition={{
+          type: "spring",
+          stiffness: 200,
+          damping: 15,
+          delay: 0.2,
+        }}
         className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-paw-green/15"
       >
         <CheckCircle2 className="h-14 w-14 text-paw-green" />
       </motion.div>
 
       <div>
-        <h2 className="mb-2 text-3xl font-bold">Your report has been submitted!</h2>
-        <p className="text-paw-muted">We&apos;ll get a rescue team there ASAP</p>
+        <h2 className="mb-2 text-3xl font-bold">
+          Your report has been submitted!
+        </h2>
+        <p className="text-paw-muted">
+          We&apos;ll get a rescue team there ASAP
+        </p>
       </div>
 
       <div className="rounded-xl border border-paw-green/30 bg-paw-card p-6 space-y-3">
@@ -337,15 +608,17 @@ function Step3({ rescueId, submitting }: { rescueId: string; submitting: boolean
 
 export default function ReportPage() {
   const [step, setStep] = useState(0);
-  const [formData, setFormData] = useState({ 
-    species: "", 
-    description: "", 
-    uploaded: false, 
-    imageFile: null as File | null,
+  const [formData, setFormData] = useState<FormData>({
+    species: "",
+    description: "",
+    uploaded: false,
+    imageFile: null,
+    imageUrl: null,
     locationStatus: "Detecting Location...",
     lat: 0,
-    lng: 0
+    lng: 0,
   });
+  const [triageResult, setTriageResult] = useState<TriageResult | null>(null);
   const [rescueId, setRescueId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -354,59 +627,57 @@ export default function ReportPage() {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setFormData(prev => ({ 
-            ...prev, 
-            lat: pos.coords.latitude, 
+          setFormData((prev) => ({
+            ...prev,
+            lat: pos.coords.latitude,
             lng: pos.coords.longitude,
-            locationStatus: "GPS Location Captured" 
+            locationStatus: "GPS Location Captured",
           }));
         },
         () => {
-          setFormData(prev => ({ 
-            ...prev, 
-            locationStatus: "Location permission denied" 
+          setFormData((prev) => ({
+            ...prev,
+            locationStatus: "Location permission denied",
           }));
         }
       );
     } else {
-      setFormData(prev => ({ ...prev, locationStatus: "GPS not supported" }));
+      setFormData((prev) => ({
+        ...prev,
+        locationStatus: "GPS not supported",
+      }));
     }
   }, []);
 
-  const handleSubmit = async () => {
+  const handleTriageComplete = (triage: TriageResult) => {
+    setTriageResult(triage);
+    handleSubmit(triage);
+  };
+
+  const handleSubmit = async (triage: TriageResult) => {
     setStep(2);
     setSubmitting(true);
-    let imageUrl = null;
 
     try {
-      // 1. Upload photo to Supabase if exists
-      if (formData.imageFile) {
-        const fileExt = formData.imageFile.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('animal-photos')
-          .upload(fileName, formData.imageFile);
-        
-        if (uploadError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabase.storage
-          .from('animal-photos')
-          .getPublicUrl(uploadData.path);
-        
-        imageUrl = publicUrl;
-      }
-
-      // 2. Submit report to API
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           species: formData.species,
-          description: formData.description || "Visible injuries, needs assessment",
+          description:
+            formData.description || "Visible injuries, needs assessment",
           lat: formData.lat || 28.6139,
           lng: formData.lng || 77.209,
-          location: formData.locationStatus === "GPS Location Captured" ? "Current Location" : "Unknown",
-          image_url: imageUrl,
+          location:
+            formData.locationStatus === "GPS Location Captured"
+              ? "Current Location"
+              : "Unknown",
+          image_url: formData.imageUrl,
+          // Pass AI triage data
+          severity: triage.severity,
+          severity_label: triage.severityLabel,
+          ai_description: triage.description,
+          injury_tags: triage.tags,
         }),
       });
       const data = await res.json();
@@ -441,9 +712,28 @@ export default function ReportPage() {
         <StepIndicator current={step} />
 
         <AnimatePresence mode="wait">
-          {step === 0 && <Step1 key="step1" onNext={() => setStep(1)} formData={formData} setFormData={setFormData} />}
-          {step === 1 && <Step2 key="step2" onNext={handleSubmit} />}
-          {step === 2 && <Step3 key="step3" rescueId={rescueId} submitting={submitting} />}
+          {step === 0 && (
+            <Step1
+              key="step1"
+              onNext={() => setStep(1)}
+              formData={formData}
+              setFormData={setFormData}
+            />
+          )}
+          {step === 1 && (
+            <Step2
+              key="step2"
+              imageUrl={formData.imageUrl}
+              onNext={handleTriageComplete}
+            />
+          )}
+          {step === 2 && (
+            <Step3
+              key="step3"
+              rescueId={rescueId}
+              submitting={submitting}
+            />
+          )}
         </AnimatePresence>
       </div>
     </div>

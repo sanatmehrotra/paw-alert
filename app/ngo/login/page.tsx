@@ -2,33 +2,83 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { PawPrint, Mail, Lock, ArrowRight, Loader2, AlertCircle, Heart } from "lucide-react";
+import {
+  PawPrint, Mail, Lock, ArrowRight, Loader2, AlertCircle,
+  Clock, XCircle, Eye, EyeOff,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+
+type GateStatus = "idle" | "pending" | "rejected";
 
 export default function NGOLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [gateStatus, setGateStatus] = useState<GateStatus>("idle");
+  const [rejectionReason, setRejectionReason] = useState("");
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setGateStatus("idle");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // 1. Sign in
+    const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setError(error.message);
+    if (authErr) {
+      setError(authErr.message);
       setLoading(false);
-    } else {
-      router.push("/ngo");
+      return;
     }
+
+    const userId = authData.user?.id;
+    if (!userId) { setError("Authentication failed."); setLoading(false); return; }
+
+    // 2. Check profile role — admin bypasses NGO gate
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, ngo_status")
+      .eq("id", userId)
+      .single();
+
+    if (profile?.role === "admin") {
+      router.push("/admin");
+      return;
+    }
+
+    // 3. Check NGO application status
+    const { data: application } = await supabase
+      .from("ngo_applications")
+      .select("status, rejection_reason")
+      .eq("user_id", userId)
+      .order("submitted_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    const ngoStatus = profile?.ngo_status || application?.status || "pending";
+
+    if (ngoStatus === "approved") {
+      router.push("/ngo");
+      return;
+    }
+
+    // Not yet approved — sign them out and show status
+    await supabase.auth.signOut();
+
+    if (ngoStatus === "rejected") {
+      setRejectionReason(application?.rejection_reason || "Your application did not meet requirements.");
+      setGateStatus("rejected");
+    } else {
+      setGateStatus("pending");
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -38,9 +88,10 @@ export default function NGOLoginPage() {
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md"
       >
+        {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-paw-green/15">
-            <Heart className="h-6 w-6 text-paw-green" />
+            <PawPrint className="h-6 w-6 text-paw-green" />
           </div>
           <span className="text-2xl font-bold">
             Paw<span className="text-paw-green">Rescue</span>
@@ -55,38 +106,67 @@ export default function NGOLoginPage() {
             </p>
           </div>
 
+          {/* Gate status banners */}
+          {gateStatus === "pending" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="mb-5 rounded-xl border border-paw-orange/30 bg-paw-orange/5 p-4"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="h-4 w-4 text-paw-orange" />
+                <span className="text-sm font-semibold text-paw-orange">Application Under Review</span>
+              </div>
+              <p className="text-sm text-paw-muted">
+                Your registration is being reviewed by our admin team. You will be able to sign in once approved (typically 24–48 hours).
+              </p>
+            </motion.div>
+          )}
+
+          {gateStatus === "rejected" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="mb-5 rounded-xl border border-paw-red/30 bg-paw-red/5 p-4"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="h-4 w-4 text-paw-red" />
+                <span className="text-sm font-semibold text-paw-red">Application Rejected</span>
+              </div>
+              <p className="text-sm text-paw-muted">
+                <strong className="text-paw-text">Reason:</strong> {rejectionReason}
+              </p>
+              <Link href="/ngo/register"
+                className="mt-2 inline-block text-xs text-paw-orange hover:underline">
+                Register a new application →
+              </Link>
+            </motion.div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-paw-muted mb-2">
-                Registered Email
-              </label>
+              <label className="block text-sm font-medium text-paw-muted mb-1.5">Registered Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paw-muted" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ngo-admin@care.org"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-paw-green/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-green focus:outline-none transition-colors"
-                />
+                <input type="email" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="ngo-admin@care.org" required
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-paw-green/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-green focus:outline-none transition-colors text-sm" />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-paw-muted mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-paw-muted mb-1.5">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paw-muted" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-paw-green/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-green focus:outline-none transition-colors"
-                />
+                <input type={showPwd ? "text" : "password"} value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••" required
+                  className="w-full pl-10 pr-10 py-3 rounded-xl border border-paw-green/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-green focus:outline-none transition-colors text-sm" />
+                <button type="button" onClick={() => setShowPwd(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {showPwd
+                    ? <EyeOff className="h-4 w-4 text-paw-muted" />
+                    : <Eye className="h-4 w-4 text-paw-muted" />}
+                </button>
               </div>
             </div>
 
@@ -97,26 +177,25 @@ export default function NGOLoginPage() {
               </div>
             )}
 
-            <button
-              type="submit"
+            <button type="submit"
               disabled={loading || !email || !password}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-green py-3 text-base font-semibold text-white transition-all hover:bg-paw-green/90 hover:shadow-lg hover:shadow-paw-green/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <>
-                  Launch Dashboard
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </>
-              )}
+              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-green py-3 text-base font-semibold text-white transition-all hover:bg-paw-green/90 hover:shadow-lg hover:shadow-paw-green/20 disabled:opacity-50 disabled:cursor-not-allowed">
+              {loading
+                ? <Loader2 className="h-5 w-5 animate-spin" />
+                : <>Launch Dashboard <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>}
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-paw-green/10 text-center">
-            <a href="/" className="text-xs text-paw-muted hover:text-paw-green transition-colors">
+          <div className="mt-6 pt-5 border-t border-paw-green/10 flex flex-col items-center gap-2 text-xs text-paw-muted">
+            <span>
+              New organisation?{" "}
+              <Link href="/ngo/register" className="text-paw-orange hover:underline font-medium">
+                Register your NGO →
+              </Link>
+            </span>
+            <Link href="/" className="hover:text-paw-green transition-colors">
               Return to Public Portal
-            </a>
+            </Link>
           </div>
         </div>
       </motion.div>

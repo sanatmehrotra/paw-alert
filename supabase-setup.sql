@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS reports (
   severity_label TEXT,
   status TEXT DEFAULT 'pending',
   image_url TEXT,
+  ai_description TEXT,           -- Gemini Vision AI injury summary
+  injury_tags TEXT[],            -- AI-detected injury tags e.g. {fracture, bleeding}
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -87,3 +89,10 @@ WITH CHECK (bucket_id = 'animal-photos');
 CREATE POLICY "Public View"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'animal-photos');
+
+-- =====================================================
+-- MIGRATION: Run this if reports table already exists
+-- (Skip if doing a fresh setup above)
+-- =====================================================
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS ai_description TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS injury_tags TEXT[];
