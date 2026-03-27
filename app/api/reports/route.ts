@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { analyzeAnimalInjury } from "@/lib/gemini-triage";
 
 export async function GET() {

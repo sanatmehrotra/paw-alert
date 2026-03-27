@@ -62,6 +62,7 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "minor injury":   { bg: "#4FC97E20", text: "#4FC97E", emoji: "🩹" },
   "scared":         { bg: "#3B9EFF20", text: "#3B9EFF", emoji: "😰" },
   "stray":          { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🐾" },
+  "maggot wound":   { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🐛" },
 };
 
 /** Get tag styling — falls back to a neutral style for unknown tags */
@@ -70,32 +71,54 @@ export function getTagStyle(tag: string): { bg: string; text: string; emoji: str
   return TAG_COLORS[normalized] || { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🏷️" };
 }
 
-const TRIAGE_PROMPT = `You are a veterinary AI assistant for PawAlert, an animal rescue platform.
+const TRIAGE_PROMPT = `You are a Senior Veterinary Triage Specialist for PawAlert, India's leading stray animal rescue platform.
+Your goal is to provide a high-accuracy medical assessment based on the provided image.
 
-Analyze the provided image of a stray or injured animal. Return a JSON object with these exact fields:
+### Thinking Phase (Chain of Thought):
+Before generating the final JSON, describe what you see in the image:
+1. **Clinical Observations**: Note hair loss, blood, bone alignment, skin texture (crusty, red), and body weight.
+2. **Species & Position**: Confirm the animal and if it is standing, sitting, or prone (unable to move).
+3. **Environment**: Is it near a road? This indicators high risk of trauma.
 
+### Few-Shot Examples for Accuracy:
+
+#### Example 1 (Severe Mange):
+- **Input**: Image showing a dog with 80% hair loss, thickened grey skin, and crusty scabs.
+- **Thinking**: The dog shows generalized alopecia. Skin is thickened (lichenification) and crusty, suggesting chronic Sarcoptic or Demodectic mange. No active bleeding, but severe skin barrier compromise.
+- **Output**: {"severity": 8, "severityLabel": "HIGH", "description": "Generalized alopecia with significant skin thickening and crusting. Likely severe chronic mange.", "tags": ["mange", "skin disease", "infection"], "note": "Urgent rescue needed for medicated baths and isolation." }
+
+#### Example 2 (Hit and Run / Trauma):
+- **Input**: Image of a dog lying on a busy road, hind legs pointing in unnatural directions.
+- **Thinking**: Animal is prone on a high-traffic road. Hind limb deformity suggests pelvic or spinal fracture. High risk of internal hemorrhage.
+- **Output**: {"severity": 10, "severityLabel": "CRITICAL", "description": "Prone animal on road with limb deformities. High suspicion of spinal/pelvic trauma from hit-and-run.", "tags": ["fracture", "internal injury", "paralysis"], "note": "CRITICAL: Immediate rescue with spinal board support required." }
+
+#### Example 3 (Maggot Wound):
+- **Input**: Image of a deep cavity in a dog's ear with small white larvae visible.
+- **Thinking**: Focal deep tissue loss. Visible white larvae (maggots) indicating myiasis. Infection risk is high.
+- **Output**: {"severity": 9, "severityLabel": "CRITICAL", "description": "Deep focal lesion with active myiasis (maggot infestation) in the ear canal region.", "tags": ["maggot wound", "infection", "wound"], "note": "Immediate surgical cleaning and maggot removal needed." }
+
+### Return Format:
+Return ONLY a valid JSON object. Do not include the "Thinking" block in the JSON, just the final fields:
 {
-  "severity": <number 1-10>,
+  "severity": <integer 1-10>,
   "severityLabel": "<CRITICAL | HIGH | MODERATE | LOW>",
-  "description": "<2-3 sentence description of visible injuries or condition>",
-  "tags": ["<injury tag 1>", "<injury tag 2>", ...],
-  "note": "<1 sentence triage recommendation for rescue team>"
+  "description": "<Detailed clinical observation>",
+  "tags": ["<tag1>", "<tag2>", ...],
+  "note": "<Actionable instruction>"
 }
 
-Severity scale:
-- 9-10 = CRITICAL: Life-threatening, needs immediate rescue (heavy bleeding, unconscious, paralyzed, hit by vehicle)
-- 7-8 = HIGH: Severe injury needing urgent care (broken bone, deep wound, severe malnourishment)
-- 4-6 = MODERATE: Visible injury or distress (limping, minor wounds, skin disease, dehydration)
-- 1-3 = LOW: Mild condition (minor scrapes, appears scared but healthy, stray needing shelter)
+### Triage Protocol:
+- **10 (CRITICAL)**: Immobile, heavy active bleeding, hit-and-run, unconscious, or head/eye maggot wounds.
+- **8-9 (HIGH)**: Deep tissue loss, severe mange (70%+), open fractures, or extreme emaciation.
+- **5-7 (MODERATE)**: Limping, skin disease, minor wounds, or eye infections.
+- **1-4 (LOW)**: Scared but healthy, minor scrapes, or stray needing shelter.
 
-For tags, use simple lowercase keywords from this list when applicable:
-bleeding, fracture, broken bone, wound, laceration, bite wound, burn, malnourished, dehydration, emaciated, 
-limping, skin disease, mange, infection, eye injury, eye infection, ear infection, tick infestation, 
-paralysis, unconscious, poisoning, internal injury, abscess, lethargic, weakness, minor injury, healthy, scared, stray
+### Dictionary:
+bleeding, fracture, wound, laceration, bite wound, burn, malnourished, emaciated, dehydration, limping, skin disease, mange, infection, eye injury, paralysis, unconscious, internal injury, abscess, maggot wound.
 
-If the image does not appear to be an animal or is unclear, still provide your best assessment with a low severity score and note the uncertainty.
-
-IMPORTANT: Return ONLY valid JSON, no markdown code fences, no explanation text.`;
+### Constraint:
+- If unsure, prioritize a HIGHER severity score.
+- Return ONLY the JSON object.`;
 
 /**
  * Analyze an animal photo for injuries using Gemini Vision.
@@ -138,13 +161,17 @@ export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResul
 
     const responseText = result.response.text();
 
-    // 3. Parse AI response (strip any markdown fences if present)
-    const cleaned = responseText
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .trim();
+    // 3. Parse AI response
+    // Extract everything between first { and last } to skip any "Thinking" preamble
+    const startIndex = responseText.indexOf("{");
+    const endIndex = responseText.lastIndexOf("}");
+    
+    if (startIndex === -1 || endIndex === -1) {
+      throw new Error("No JSON object found in AI response");
+    }
 
-    const parsed = JSON.parse(cleaned);
+    const jsonString = responseText.substring(startIndex, endIndex + 1);
+    const parsed = JSON.parse(jsonString);
 
     // 4. Validate and normalize
     const severity = Math.min(10, Math.max(1, Math.round(Number(parsed.severity) || 5)));

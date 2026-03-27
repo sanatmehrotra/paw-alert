@@ -10,6 +10,8 @@ const navLinks = [
   { href: "/", label: "Home" },
   { href: "/report", label: "Report" },
   { href: "/track", label: "Track" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/contact", label: "Contact" },
 ];
 
 const notifications = [
