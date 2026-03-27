@@ -525,7 +525,7 @@ function NgoDashboard() {
 
 export default function NgoDashboardPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute requiredRole="ngo">
       <NgoDashboard />
     </ProtectedRoute>
   );

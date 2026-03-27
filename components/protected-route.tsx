@@ -5,15 +5,21 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { Loader2 } from "lucide-react";
 
-export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+export default function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: "admin" | "ngo" }) {
+  const { user, role, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
+    if (!loading) {
+      if (!user) {
+        // No user -> redirect to specialized login
+        router.push(requiredRole === "admin" ? "/admin/login" : "/ngo/login");
+      } else if (requiredRole && role && role !== requiredRole) {
+        // Wrong role -> redirect away
+        router.push(role === "admin" ? "/admin" : "/ngo");
+      }
     }
-  }, [user, loading, router]);
+  }, [user, role, loading, router, requiredRole]);
 
   if (loading) {
     return (
@@ -26,7 +32,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user) return null;
+  if (!user || (requiredRole && role !== requiredRole)) return null;
 
   return <>{children}</>;
 }
