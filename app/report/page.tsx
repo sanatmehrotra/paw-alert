@@ -15,7 +15,7 @@ import {
 import { speciesOptions } from "@/lib/mockData";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getTagStyle } from "@/lib/gemini-triage";
+import { getTagStyle, TriageResult } from "@/lib/gemini-triage";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fadeUp: any = {
@@ -26,14 +26,6 @@ const fadeUp: any = {
     transition: { duration: 0.5, ease: "easeOut" },
   },
 };
-
-interface TriageResult {
-  severity: number;
-  severityLabel: string;
-  description: string;
-  tags: string[];
-  note: string;
-}
 
 interface FormData {
   species: string;
@@ -400,7 +392,7 @@ function Step2({
             <p className="text-xl font-medium text-paw-orange">
               Analysing injury with Gemini Vision AI…
             </p>
-            <p className="text-sm text-paw-muted max-w-sm text-center">
+            <p className="text-sm text-paw-muted max-sm text-center">
               Our AI model is examining the photo for injuries, assessing
               severity, and identifying injury types
             </p>
@@ -665,7 +657,7 @@ export default function ReportPage() {
         body: JSON.stringify({
           species: formData.species,
           description:
-            formData.description || "Visible injuries, needs assessment",
+            formData.description || `AI Triage: ${triage.description}`,
           lat: formData.lat || 28.6139,
           lng: formData.lng || 77.209,
           location:
@@ -673,11 +665,8 @@ export default function ReportPage() {
               ? "Current Location"
               : "Unknown",
           image_url: formData.imageUrl,
-          // Pass AI triage data
-          severity: triage.severity,
+          severity_score: triage.severity,
           severity_label: triage.severityLabel,
-          ai_description: triage.description,
-          injury_tags: triage.tags,
         }),
       });
       const data = await res.json();
@@ -706,35 +695,37 @@ export default function ReportPage() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          Help save a life in 60 seconds
+          High-accuracy AI analysis powered by Gemini Vision
         </motion.p>
 
         <StepIndicator current={step} />
 
-        <AnimatePresence mode="wait">
-          {step === 0 && (
-            <Step1
-              key="step1"
-              onNext={() => setStep(1)}
-              formData={formData}
-              setFormData={setFormData}
-            />
-          )}
-          {step === 1 && (
-            <Step2
-              key="step2"
-              imageUrl={formData.imageUrl}
-              onNext={handleTriageComplete}
-            />
-          )}
-          {step === 2 && (
-            <Step3
-              key="step3"
-              rescueId={rescueId}
-              submitting={submitting}
-            />
-          )}
-        </AnimatePresence>
+        <div className="relative mt-16 min-h-[400px]">
+          <AnimatePresence mode="wait">
+            {step === 0 && (
+              <Step1
+                key="step1"
+                onNext={() => setStep(1)}
+                formData={formData}
+                setFormData={setFormData}
+              />
+            )}
+            {step === 1 && (
+              <Step2
+                key="step2"
+                imageUrl={formData.imageUrl}
+                onNext={handleTriageComplete}
+              />
+            )}
+            {step === 2 && (
+              <Step3
+                key="step3"
+                rescueId={rescueId}
+                submitting={submitting}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
