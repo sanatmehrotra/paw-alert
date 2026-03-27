@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { species, description, lat, lng, location } = body;
+    const { species, description, lat, lng, location, image_url } = body;
 
     if (!species) {
       return NextResponse.json({ error: "Species is required" }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       severity,
       severity_label: labels[String(severity)] || "MODERATE",
       status: "pending",
+      image_url: image_url || null,
     };
 
     const { data, error } = await supabaseAdmin

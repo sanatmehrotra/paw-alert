@@ -15,6 +15,7 @@ import {
   Zap,
   Wrench,
   LogOut,
+  Loader2,
 } from "lucide-react";
 import { alertCards, type AlertCard, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
 import { toast } from "sonner";
@@ -127,44 +128,52 @@ function OverviewTab() {
 
 // ---- Incoming Alerts Tab ----
 function IncomingAlerts() {
-  const [cards, setCards] = useState<(AlertCard & { accepted?: boolean })[]>([]);
+  const [cards, setCards] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/reports")
       .then(r => r.json())
-      .then((data: Array<{
-        id: string;
-        severity: number;
-        severityLabel: string;
-        species: string;
-        location: string;
-        createdAt: string;
-        status: string;
-      }>) => {
+      .then((data: any[]) => {
         const severityColors: Record<string, string> = {
           CRITICAL: "#FF4F4F", HIGH: "#E47F42", MODERATE: "#FFE00F", LOW: "#4FC97E"
         };
         const speciesIcons: Record<string, string> = {
           Dog: "🐕", Cat: "🐈", Cow: "🐄", Bird: "🐦", Other: "🐾"
         };
-        setCards(data.map(r => ({
-          id: Number(r.id.replace(/\D/g, "").slice(-6)) || Math.floor(Math.random() * 10000),
-          severity: r.severity,
-          severityLabel: r.severityLabel,
-          color: severityColors[r.severityLabel] || "#E47F42",
+
+        const reports = data.map(r => ({
+          id: r.id,
           animal: r.species,
-          animalIcon: speciesIcons[r.species] || "🐾",
           location: r.location,
-          reportedAgo: new Date(r.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          reportedAgo: new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          severity: r.severity,
+          severityLabel: r.severity_label,
+          color: severityColors[r.severity_label] || "#FFE00F",
+          animalIcon: speciesIcons[r.species] || "🐾",
           accepted: r.status === "accepted" || r.status === "dispatched",
+          image_url: r.image_url
+        }));
+        setCards(reports);
+      })
+      .catch((err) => {
+        console.error("Fetch alerts error:", err);
+        setCards(alertCards.map(c => ({ 
+          id: c.id, 
+          animal: c.animal, 
+          location: c.location, 
+          reportedAgo: c.reportedAgo, 
+          severity: c.severity, 
+          severityLabel: c.severityLabel, 
+          color: c.color, 
+          animalIcon: c.animalIcon, 
+          accepted: false 
         })));
       })
-      .catch(() => setCards(alertCards.map(c => ({ ...c, accepted: false }))))
       .finally(() => setLoading(false));
   }, []);
 
-  const handleAccept = (id: number) => {
+  const handleAccept = (id: string | number) => {
     setCards((prev) =>
       prev.map((c) => (c.id === id ? { ...c, accepted: true } : c))
     );
@@ -176,7 +185,8 @@ function IncomingAlerts() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-paw-muted text-sm animate-pulse">Loading alerts...</div>
+        <Loader2 className="h-8 w-8 animate-spin text-paw-orange" />
+        <div className="ml-3 text-paw-muted text-sm">Loading live alerts...</div>
       </div>
     );
   }
@@ -207,7 +217,14 @@ function IncomingAlerts() {
           }`}
         >
           <div className="w-1.5 shrink-0" style={{ backgroundColor: card.accepted ? "#4FC97E" : card.color }} />
+          
           <div className="flex flex-1 flex-col sm:flex-row items-start sm:items-center gap-4 p-5">
+            {card.image_url && (
+              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-paw-orange/10">
+                <img src={card.image_url} alt="Animal" className="h-full w-full object-cover" />
+              </div>
+            )}
+            
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-2xl">{card.animalIcon}</span>
@@ -224,15 +241,16 @@ function IncomingAlerts() {
               </div>
               <div className="text-sm text-paw-muted">📍 {card.location} · {card.reportedAgo}</div>
             </div>
+            
             {!card.accepted ? (
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
                 <button
                   onClick={() => handleAccept(card.id)}
-                  className="flex items-center gap-1.5 rounded-lg bg-paw-green/15 px-4 py-2 text-sm font-medium text-paw-green transition-all hover:bg-paw-green/25"
+                  className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-paw-green/15 px-4 py-2 text-sm font-medium text-paw-green transition-all hover:bg-paw-green/25"
                 >
                   <Check className="h-4 w-4" /> Accept
                 </button>
-                <button className="flex items-center gap-1.5 rounded-lg border border-paw-red/30 px-4 py-2 text-sm font-medium text-paw-red transition-all hover:bg-paw-red/10">
+                <button className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg border border-paw-red/30 px-4 py-2 text-sm font-medium text-paw-red transition-all hover:bg-paw-red/10">
                   <X className="h-4 w-4" /> Reject
                 </button>
               </div>

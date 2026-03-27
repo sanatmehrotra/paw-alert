@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, MapPin, CheckCircle2, Camera, ArrowRight, Loader2, FileText } from "lucide-react";
 import { speciesOptions, severityResult } from "@/lib/mockData";
 import Link from "next/link";
-
+import { supabase } from "@/lib/supabase";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fadeUp: any = {
   hidden: { opacity: 0, y: 30 },
@@ -55,9 +55,16 @@ function Step1({
   setFormData,
 }: {
   onNext: () => void;
-  formData: { species: string; description: string; uploaded: boolean };
-  setFormData: (d: { species: string; description: string; uploaded: boolean }) => void;
+  formData: { species: string; description: string; uploaded: boolean; imageFile: File | null; locationStatus: string; lat: number; lng: number };
+  setFormData: (d: any) => void;
 }) {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData({ ...formData, uploaded: true, imageFile: file });
+    }
+  };
+
   return (
     <motion.div variants={fadeUp} initial="hidden" animate="visible" className="mx-auto max-w-xl space-y-8">
       {/* Upload zone */}
@@ -67,8 +74,15 @@ function Step1({
             ? "border-paw-green bg-paw-green/5"
             : "border-paw-orange/40 bg-paw-card hover:border-paw-orange hover:bg-paw-orange/5"
         }`}
-        onClick={() => setFormData({ ...formData, uploaded: true })}
+        onClick={() => document.getElementById("fileInput")?.click()}
       >
+        <input
+          type="file"
+          id="fileInput"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         {formData.uploaded ? (
           <motion.div
             initial={{ scale: 0 }}
@@ -78,9 +92,17 @@ function Step1({
             <CheckCircle2 className="h-12 w-12 text-paw-green" />
             <span className="text-paw-green font-medium">Photo uploaded successfully</span>
             <div className="mt-2 flex gap-2 items-center rounded-lg bg-paw-card border border-paw-green/20 px-3 py-2">
-              <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-paw-orange/30 to-paw-orange/10 flex items-center justify-center text-2xl">🐕</div>
+              {formData.imageFile ? (
+                <img 
+                  src={URL.createObjectURL(formData.imageFile)} 
+                  alt="Preview" 
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-paw-orange/30 to-paw-orange/10 flex items-center justify-center text-2xl">🐕</div>
+              )}
               <div className="text-xs text-paw-muted">
-                <div className="font-medium text-paw-text">IMG_20250114_153200.jpg</div>
+                <div className="font-medium text-paw-text">{formData.imageFile?.name || "photo.jpg"}</div>
                 <div>2.4 MB · 4032×3024</div>
               </div>
             </div>
@@ -102,15 +124,17 @@ function Step1({
       </div>
 
       {/* GPS Location */}
-      <div className="flex items-center gap-3 rounded-xl border border-paw-green/30 bg-paw-green/5 p-4">
-        <MapPin className="h-5 w-5 text-paw-green" />
+      <div className={`flex items-center gap-3 rounded-xl border p-4 ${
+        formData.lat ? "border-paw-green/30 bg-paw-green/5" : "border-paw-orange/30 bg-paw-orange/5 animate-pulse"
+      }`}>
+        <MapPin className={`h-5 w-5 ${formData.lat ? "text-paw-green" : "text-paw-orange"}`} />
         <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-paw-green">
-            <CheckCircle2 className="h-4 w-4" />
-            GPS Location Captured
+          <div className={`flex items-center gap-2 text-sm font-medium ${formData.lat ? "text-paw-green" : "text-paw-orange"}`}>
+            {formData.lat ? <CheckCircle2 className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+            {formData.locationStatus}
           </div>
           <div className="text-xs text-paw-muted">
-            28.6139° N, 77.2090° E — New Delhi
+            {formData.lat ? `${formData.lat.toFixed(4)}° N, ${formData.lng.toFixed(4)}° E` : "Determining precisely..."}
           </div>
         </div>
       </div>
@@ -313,29 +337,83 @@ function Step3({ rescueId, submitting }: { rescueId: string; submitting: boolean
 
 export default function ReportPage() {
   const [step, setStep] = useState(0);
-  const [formData, setFormData] = useState({ species: "", description: "", uploaded: false });
+  const [formData, setFormData] = useState({ 
+    species: "", 
+    description: "", 
+    uploaded: false, 
+    imageFile: null as File | null,
+    locationStatus: "Detecting Location...",
+    lat: 0,
+    lng: 0
+  });
   const [rescueId, setRescueId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Geolocation
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setFormData(prev => ({ 
+            ...prev, 
+            lat: pos.coords.latitude, 
+            lng: pos.coords.longitude,
+            locationStatus: "GPS Location Captured" 
+          }));
+        },
+        () => {
+          setFormData(prev => ({ 
+            ...prev, 
+            locationStatus: "Location permission denied" 
+          }));
+        }
+      );
+    } else {
+      setFormData(prev => ({ ...prev, locationStatus: "GPS not supported" }));
+    }
+  }, []);
 
   const handleSubmit = async () => {
     setStep(2);
     setSubmitting(true);
+    let imageUrl = null;
+
     try {
+      // 1. Upload photo to Supabase if exists
+      if (formData.imageFile) {
+        const fileExt = formData.imageFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('animal-photos')
+          .upload(fileName, formData.imageFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('animal-photos')
+          .getPublicUrl(uploadData.path);
+        
+        imageUrl = publicUrl;
+      }
+
+      // 2. Submit report to API
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           species: formData.species,
           description: formData.description || "Visible injuries, needs assessment",
-          lat: 28.6139,
-          lng: 77.209,
-          location: "Lajpat Nagar, New Delhi",
+          lat: formData.lat || 28.6139,
+          lng: formData.lng || 77.209,
+          location: formData.locationStatus === "GPS Location Captured" ? "Current Location" : "Unknown",
+          image_url: imageUrl,
         }),
       });
       const data = await res.json();
       setRescueId(data.id || "PAW-2024-0847");
-    } catch {
-      setRescueId("PAW-2024-0847");
+    } catch (err) {
+      console.error("Submission error:", err);
+      setRescueId("PAW-ERR-999");
     } finally {
       setSubmitting(false);
     }

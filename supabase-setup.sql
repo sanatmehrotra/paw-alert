@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS reports (
   severity INTEGER,
   severity_label TEXT,
   status TEXT DEFAULT 'pending',
+  image_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -70,3 +71,19 @@ CREATE POLICY "Public read animals" ON animals FOR SELECT USING (true);
 CREATE POLICY "Public read ngos" ON ngos FOR SELECT USING (true);
 CREATE POLICY "Service role full access" ON ngos FOR ALL USING (true);
 CREATE POLICY "Service role update ngos" ON ngos FOR UPDATE USING (true);
+
+-- 7. Storage Bucket for Animal Photos
+-- Note: In Supabase, buckets are managed via the 'storage' schema
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('animal-photos', 'animal-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow public uploads to animal-photos
+CREATE POLICY "Public Upload"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'animal-photos');
+
+-- Allow public reads from animal-photos
+CREATE POLICY "Public View"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'animal-photos');
