@@ -44,6 +44,7 @@ interface StatsData {
 }
 
 function AdminDashboard() {
+  const { signOut } = useAuth();
   const [rows, setRows] = useState<(NgoRow & { verified?: boolean })[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
 
@@ -99,11 +100,21 @@ function AdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10"
         >
-          <h1 className="mb-2 text-3xl font-bold sm:text-4xl">
-            Admin <span className="text-paw-orange">Panel</span>
-          </h1>
-          <p className="mb-10 text-paw-muted">Platform overview and management</p>
+          <div>
+            <h1 className="mb-2 text-3xl font-bold sm:text-4xl">
+              Admin <span className="text-paw-orange">Panel</span>
+            </h1>
+            <p className="text-paw-muted">Platform overview and management</p>
+          </div>
+          <button
+            onClick={() => signOut()}
+            className="flex items-center gap-2 rounded-lg border border-paw-orange/20 bg-paw-card px-4 py-2 text-sm font-medium text-paw-muted transition-all hover:border-paw-orange/40 hover:text-paw-text"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
         </motion.div>
 
         {/* Stats row */}

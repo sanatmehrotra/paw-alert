@@ -14,10 +14,12 @@ import {
   Clock,
   Zap,
   Wrench,
+  LogOut,
 } from "lucide-react";
 import { alertCards, type AlertCard, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
 import { toast } from "sonner";
 import ProtectedRoute from "@/components/protected-route";
+import { useAuth } from "@/components/auth-provider";
 import {
   BarChart,
   Bar,
@@ -415,6 +417,7 @@ function AnalyticsView() {
 
 // ---- Main Dashboard ----
 function NgoDashboard() {
+  const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState("Overview");
 
   const tabs: Record<string, React.ReactNode> = {
@@ -456,6 +459,16 @@ function NgoDashboard() {
             );
           })}
         </nav>
+
+        <div className="mt-auto pt-6 border-t border-paw-orange/10">
+          <button
+            onClick={() => signOut()}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-paw-muted transition-all hover:bg-white/5 hover:text-paw-text"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
+        </div>
       </aside>
 
       {/* Mobile tabs */}
