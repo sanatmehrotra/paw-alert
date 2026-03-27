@@ -1,0 +1,133 @@
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { PawPrint, Mail, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setSent(true);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-paw-bg flex items-center justify-center px-4">
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
+      >
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-paw-orange/15">
+            <PawPrint className="h-6 w-6 text-paw-orange" />
+          </div>
+          <span className="text-2xl font-bold">
+            Paw<span className="text-paw-orange">Alert</span>
+          </span>
+        </div>
+
+        <div className="rounded-2xl border border-paw-orange/20 bg-paw-card p-8 shadow-xl">
+          {sent ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center space-y-4"
+            >
+              <CheckCircle2 className="h-16 w-16 text-paw-green mx-auto" />
+              <h2 className="text-xl font-bold">Check your email!</h2>
+              <p className="text-paw-muted text-sm">
+                We sent a magic login link to <span className="text-paw-orange font-medium">{email}</span>.
+                Click the link to sign in instantly — no password needed.
+              </p>
+              <button
+                onClick={() => { setSent(false); setEmail(""); }}
+                className="text-xs text-paw-muted hover:text-paw-text transition-colors"
+              >
+                Use a different email
+              </button>
+            </motion.div>
+          ) : (
+            <>
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold mb-1">Sign In</h1>
+                <p className="text-paw-muted text-sm">
+                  Enter your email to receive a magic link — no password required.
+                </p>
+              </div>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-paw-muted mb-2">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paw-muted" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-paw-orange/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-orange focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="rounded-lg bg-paw-red/10 border border-paw-red/20 px-4 py-3 text-sm text-paw-red">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange py-3 text-base font-semibold text-white transition-all hover:shadow-lg hover:shadow-paw-orange/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      Send Magic Link
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <p className="mt-6 text-center text-xs text-paw-muted">
+                For NGO admins and platform staff only.{" "}
+                <a href="/" className="text-paw-orange hover:underline">
+                  Citizens don&apos;t need to sign in to report.
+                </a>
+              </p>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}

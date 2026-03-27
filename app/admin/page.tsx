@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, FileText, AlertTriangle, Activity, Server, Database, Wifi } from "lucide-react";
+import { Check, FileText, AlertTriangle, Activity, Server, Database, Wifi, LogOut } from "lucide-react";
 import { type NgoRow } from "@/lib/mockData";
 import { toast } from "sonner";
+import ProtectedRoute from "@/components/protected-route";
+import { useAuth } from "@/components/auth-provider";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fadeUp: any = {
@@ -41,7 +43,7 @@ interface StatsData {
   animalsInShelters: number;
 }
 
-export default function AdminPanel() {
+function AdminDashboard() {
   const [rows, setRows] = useState<(NgoRow & { verified?: boolean })[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
 
@@ -289,5 +291,13 @@ export default function AdminPanel() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <ProtectedRoute>
+      <AdminDashboard />
+    </ProtectedRoute>
   );
 }

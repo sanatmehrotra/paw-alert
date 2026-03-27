@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { alertCards, type AlertCard, rescuesPerDay, speciesDistribution, responseTimeTrend } from "@/lib/mockData";
 import { toast } from "sonner";
+import ProtectedRoute from "@/components/protected-route";
 import {
   BarChart,
   Bar,
@@ -413,7 +414,7 @@ function AnalyticsView() {
 }
 
 // ---- Main Dashboard ----
-export default function NgoDashboard() {
+function NgoDashboard() {
   const [activeTab, setActiveTab] = useState("Overview");
 
   const tabs: Record<string, React.ReactNode> = {
@@ -488,5 +489,13 @@ export default function NgoDashboard() {
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+export default function NgoDashboardPage() {
+  return (
+    <ProtectedRoute>
+      <NgoDashboard />
+    </ProtectedRoute>
   );
 }
