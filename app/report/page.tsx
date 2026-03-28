@@ -27,14 +27,6 @@ const fadeUp: any = {
   },
 };
 
-interface TriageResult {
-  severity: number;
-  severityLabel: string;
-  description: string;
-  tags: string[];
-  note: string;
-}
-
 interface FormData {
   species: string;
   description: string;
@@ -810,6 +802,8 @@ export default function ReportPage() {
             <Step2
               key="step2"
               imageUrl={formData.imageUrl}
+              species={formData.species}
+              description={formData.description}
               onNext={handleTriageComplete}
             />
           )}

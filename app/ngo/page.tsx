@@ -776,6 +776,11 @@ function NgoDashboard() {
   const [activeTab, setActiveTab] = useState("Overview");
   const ngoId = user?.id || "";
 
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = "/ngo/login";
+  };
+
   const tabs: Record<string, React.ReactNode> = {
     "Overview": <OverviewTab ngoId={ngoId} />,
     "Incoming Alerts": <IncomingAlerts ngoId={ngoId} />,
@@ -785,86 +790,81 @@ function NgoDashboard() {
     "Analytics": <AnalyticsView ngoId={ngoId} />,
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    window.location.href = "/ngo/login";
-  };
-
   return (
     <div className="min-h-screen bg-paw-bg flex flex-col">
-      {/* Top header — always visible */}
+      {/* Top Header — always visible */}
       <header className="flex items-center justify-between border-b border-paw-orange/15 bg-paw-card px-4 py-3 lg:px-6">
         <div className="flex items-center gap-2">
           <PawPrint className="h-5 w-5 text-paw-orange" />
-          <span className="font-bold text-paw-orange">NGO Dashboard</span>
+          <span className="font-bold text-paw-orange text-sm lg:text-base">PawAlert NGO</span>
         </div>
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-2 rounded-lg border border-paw-orange/20 px-4 py-2 text-sm font-medium text-paw-muted transition-all hover:bg-paw-red/10 hover:text-paw-red hover:border-paw-red/30"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:block text-xs text-paw-muted truncate max-w-[200px]">{user?.email}</span>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 rounded-lg bg-paw-red/10 px-3 py-2 text-sm font-medium text-paw-red transition-all hover:bg-paw-red/20"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </header>
 
-      <div className="flex flex-1">
-      {/* Sidebar — desktop only */}
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-paw-orange/15 bg-paw-card p-4 pt-6">
-        <nav className="space-y-1">
-          {sidebarLinks.map((link) => {
-            const Icon = link.icon;
-            const isActive = activeTab === link.label;
-            return (
-              <button
-                key={link.label}
-                onClick={() => setActiveTab(link.label)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-paw-orange/10 text-paw-orange"
-                    : "text-paw-muted hover:text-paw-text hover:bg-white/5"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {link.label}
-                {link.label === "Incoming Alerts" && (
-                  <span className="ml-auto rounded-full bg-paw-red/15 px-2 py-0.5 text-xs font-bold text-paw-red">4</span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar — desktop only */}
+        <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-paw-orange/15 bg-paw-card p-4 pt-6">
+          <nav className="space-y-1">
+            {sidebarLinks.map((link) => {
+              const Icon = link.icon;
+              const isActive = activeTab === link.label;
+              return (
+                <button
+                  key={link.label}
+                  onClick={() => setActiveTab(link.label)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                    isActive
+                      ? "bg-paw-orange/10 text-paw-orange"
+                      : "text-paw-muted hover:text-paw-text hover:bg-white/5"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {link.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-      {/* Mobile tabs */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-paw-orange/15 bg-paw-bg/95 backdrop-blur-xl">
-        <div className="flex">
-          {sidebarLinks.map((link) => {
-            const Icon = link.icon;
-            const isActive = activeTab === link.label;
-            return (
-              <button
-                key={link.label}
-                onClick={() => setActiveTab(link.label)}
-                className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs transition-colors ${
-                  isActive ? "text-paw-orange" : "text-paw-muted"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {link.label.split(" ")[0]}
-              </button>
-            );
-          })}
+        {/* Mobile tabs */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-paw-orange/15 bg-paw-bg/95 backdrop-blur-xl">
+          <div className="flex">
+            {sidebarLinks.map((link) => {
+              const Icon = link.icon;
+              const isActive = activeTab === link.label;
+              return (
+                <button
+                  key={link.label}
+                  onClick={() => setActiveTab(link.label)}
+                  className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs transition-colors ${
+                    isActive ? "text-paw-orange" : "text-paw-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {link.label.split(" ")[0]}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-6 lg:p-8 pb-24 lg:pb-8">
-        <AnimatePresence mode="wait">
-          <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            {tabs[activeTab]}
-          </motion.div>
-        </AnimatePresence>
-      </div>
+        {/* Main content */}
+        <div className="flex-1 overflow-y-auto p-6 lg:p-8 pb-24 lg:pb-8">
+          <AnimatePresence mode="wait">
+            <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {tabs[activeTab]}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

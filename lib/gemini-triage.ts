@@ -1,6 +1,7 @@
 // =============================================================
 // PawAlert — Gemini Vision AI Triage Service (v2)
 // Enhanced species verification, urgency, fracture detection
+// Chain-of-Thought prompting for higher accuracy
 // Server-side only — GEMINI_API_KEY stays secret
 // =============================================================
 
@@ -14,14 +15,14 @@ export interface TriageResult {
   note: string;                   // Triage recommendation for NGO
 
   // v2 — Enhanced fields
-  detectedAnimal: string;         // What the AI actually sees in the photo (e.g. "Dog", "Cat", "Not an animal")
+  detectedAnimal: string;         // What the AI actually sees in the photo
   speciesMatch: boolean;          // Does detected animal match user-selected species?
   speciesMismatchNote: string;    // Warning if mismatch (empty if match)
   urgencyLevel: string;           // "IMMEDIATE" | "URGENT" | "STANDARD" | "NON-URGENT"
   hasFracture: boolean;           // Suspected fracture detected?
   isConscious: boolean;           // Is the animal conscious?
   canMove: boolean;               // Can the animal move on its own?
-  estimatedAge: string;           // Rough age estimate (e.g. "~2 years", "puppy", "unknown")
+  estimatedAge: string;           // Rough age estimate
   bleedingLevel: string;          // "NONE" | "MINOR" | "MODERATE" | "SEVERE"
   mobilityStatus: string;         // "NORMAL" | "LIMPING" | "IMMOBILE" | "CANNOT DETERMINE"
   bodyCondition: string;          // "HEALTHY" | "THIN" | "EMACIATED" | "OBESE" | "CANNOT DETERMINE"
@@ -55,6 +56,7 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "mange":          { bg: "#FF8C0020", text: "#FF8C00", emoji: "🩹" },
   "infection":      { bg: "#FF8C0020", text: "#FF8C00", emoji: "🦠" },
   "open wound":     { bg: "#FF8C0020", text: "#FF8C00", emoji: "🩹" },
+  "maggot wound":   { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🐛" },
 
   // Nutritional / systemic
   "malnourished":   { bg: "#FFE00F20", text: "#D4A800", emoji: "⚖️" },
@@ -81,13 +83,9 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "minor injury":   { bg: "#4FC97E20", text: "#4FC97E", emoji: "🩹" },
   "scared":         { bg: "#3B9EFF20", text: "#3B9EFF", emoji: "😰" },
   "stray":          { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🐾" },
-<<<<<<< HEAD
   "not an animal":  { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "❌" },
   "species mismatch":{ bg: "#FFE00F20", text: "#D4A800", emoji: "⚠️" },
   "needs assessment":{ bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🔍" },
-=======
-  "maggot wound":   { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🐛" },
->>>>>>> 077f01d3551f5823cd42476e2efab7f09c84ceea
 };
 
 /** Get tag styling — falls back to a neutral style for unknown tags */
@@ -96,106 +94,55 @@ export function getTagStyle(tag: string): { bg: string; text: string; emoji: str
   return TAG_COLORS[normalized] || { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🏷️" };
 }
 
-<<<<<<< HEAD
 /**
- * Build the Gemini prompt v2 — species-aware, with richer medical output.
+ * Build the Gemini prompt v2 — species-aware, Chain-of-Thought, with richer medical output.
  */
 function buildTriagePrompt(userSelectedSpecies: string, userDescription: string): string {
-  return `You are a veterinary AI assistant for PawAlert, an animal rescue platform in India.
+  return `You are a Senior Veterinary Triage Specialist for PawAlert, India's leading stray animal rescue platform.
 
 The reporter selected: "${userSelectedSpecies}" as the species.
 The reporter described: "${userDescription || "No description provided"}"
 
-Analyze the provided image carefully. Return a JSON object with ALL these fields:
-=======
-const TRIAGE_PROMPT = `You are a Senior Veterinary Triage Specialist for PawAlert, India's leading stray animal rescue platform.
-Your goal is to provide a high-accuracy medical assessment based on the provided image.
-
 ### Thinking Phase (Chain of Thought):
-Before generating the final JSON, describe what you see in the image:
-1. **Clinical Observations**: Note hair loss, blood, bone alignment, skin texture (crusty, red), and body weight.
-2. **Species & Position**: Confirm the animal and if it is standing, sitting, or prone (unable to move).
-3. **Environment**: Is it near a road? This indicators high risk of trauma.
->>>>>>> 077f01d3551f5823cd42476e2efab7f09c84ceea
+Before generating the final JSON, reason through what you see:
+1. **Species Verification**: Is the animal in the photo actually a "${userSelectedSpecies}"? If not, what is it?
+2. **Clinical Observations**: Note hair loss, blood, bone alignment, skin texture, body weight, posture.
+3. **Mobility**: Is the animal standing, sitting, lying prone, or immobile?
+4. **Environment**: Is it near a road (trauma risk)? Indoors/outdoors?
 
 ### Few-Shot Examples for Accuracy:
 
 #### Example 1 (Severe Mange):
 - **Input**: Image showing a dog with 80% hair loss, thickened grey skin, and crusty scabs.
-- **Thinking**: The dog shows generalized alopecia. Skin is thickened (lichenification) and crusty, suggesting chronic Sarcoptic or Demodectic mange. No active bleeding, but severe skin barrier compromise.
-- **Output**: {"severity": 8, "severityLabel": "HIGH", "description": "Generalized alopecia with significant skin thickening and crusting. Likely severe chronic mange.", "tags": ["mange", "skin disease", "infection"], "note": "Urgent rescue needed for medicated baths and isolation." }
+- **Output**: {"severity": 8, "severityLabel": "HIGH", "detectedAnimal": "Dog", "speciesMatch": true, "speciesMismatchNote": "", "description": "Generalized alopecia with significant skin thickening and crusting. Likely severe chronic mange.", "tags": ["mange", "skin disease", "infection"], "note": "Urgent rescue needed for medicated baths and isolation.", "urgencyLevel": "URGENT", "hasFracture": false, "isConscious": true, "canMove": true, "estimatedAge": "~2 years adult", "bleedingLevel": "NONE", "mobilityStatus": "NORMAL", "bodyCondition": "THIN"}
 
 #### Example 2 (Hit and Run / Trauma):
-- **Input**: Image of a dog lying on a busy road, hind legs pointing in unnatural directions.
-- **Thinking**: Animal is prone on a high-traffic road. Hind limb deformity suggests pelvic or spinal fracture. High risk of internal hemorrhage.
-- **Output**: {"severity": 10, "severityLabel": "CRITICAL", "description": "Prone animal on road with limb deformities. High suspicion of spinal/pelvic trauma from hit-and-run.", "tags": ["fracture", "internal injury", "paralysis"], "note": "CRITICAL: Immediate rescue with spinal board support required." }
+- **Input**: Image of a dog lying on a road, hind legs at unnatural angles.
+- **Output**: {"severity": 10, "severityLabel": "CRITICAL", "detectedAnimal": "Dog", "speciesMatch": true, "speciesMismatchNote": "", "description": "Prone animal on road with hind limb deformity. High suspicion of spinal/pelvic fracture from hit-and-run.", "tags": ["fracture", "internal injury", "hit by vehicle"], "note": "CRITICAL: Immediate rescue with spinal board support required.", "urgencyLevel": "IMMEDIATE", "hasFracture": true, "isConscious": false, "canMove": false, "estimatedAge": "unknown", "bleedingLevel": "MODERATE", "mobilityStatus": "IMMOBILE", "bodyCondition": "CANNOT DETERMINE"}
 
 #### Example 3 (Maggot Wound):
 - **Input**: Image of a deep cavity in a dog's ear with small white larvae visible.
-- **Thinking**: Focal deep tissue loss. Visible white larvae (maggots) indicating myiasis. Infection risk is high.
-- **Output**: {"severity": 9, "severityLabel": "CRITICAL", "description": "Deep focal lesion with active myiasis (maggot infestation) in the ear canal region.", "tags": ["maggot wound", "infection", "wound"], "note": "Immediate surgical cleaning and maggot removal needed." }
+- **Output**: {"severity": 9, "severityLabel": "CRITICAL", "detectedAnimal": "Dog", "speciesMatch": true, "speciesMismatchNote": "", "description": "Deep focal lesion with active myiasis in the ear canal region.", "tags": ["maggot wound", "infection", "wound"], "note": "Immediate surgical cleaning and maggot removal needed.", "urgencyLevel": "IMMEDIATE", "hasFracture": false, "isConscious": true, "canMove": true, "estimatedAge": "~3 years adult", "bleedingLevel": "MINOR", "mobilityStatus": "NORMAL", "bodyCondition": "THIN"}
 
 ### Return Format:
-Return ONLY a valid JSON object. Do not include the "Thinking" block in the JSON, just the final fields:
+Return ONLY a valid JSON object with ALL these fields:
 {
-<<<<<<< HEAD
-  "detectedAnimal": "<What animal do you ACTUALLY see in the image? e.g. Dog, Cat, Cow, Bird, Monkey, Not an animal, Unclear>",
+  "detectedAnimal": "<What animal you ACTUALLY see: Dog, Cat, Cow, Bird, Monkey, Not an animal, etc.>",
   "speciesMatch": <true/false — does detectedAnimal match "${userSelectedSpecies}"?>,
-  "speciesMismatchNote": "<If mismatch, explain. e.g. 'The photo shows a cat, but user selected Dog'. Empty string if match>",
-  
-  "severity": <number 1-10>,
+  "speciesMismatchNote": "<If mismatch explain, else empty string>",
+  "severity": <integer 1-10>,
   "severityLabel": "<CRITICAL | HIGH | MODERATE | LOW>",
-  "description": "<3-4 sentence detailed medical description of visible injuries, body condition, and overall state>",
-  
-  "tags": ["<injury tag 1>", "<injury tag 2>", ...],
-  "note": "<1-2 sentence triage recommendation for rescue team>",
-  
+  "description": "<3-4 sentence clinical description>",
+  "tags": ["<tag1>", "<tag2>", ...],
+  "note": "<1-2 sentence actionable triage recommendation>",
   "urgencyLevel": "<IMMEDIATE | URGENT | STANDARD | NON-URGENT>",
-  "hasFracture": <true/false — is there a suspected bone fracture visible or implied?>,
-  "isConscious": <true/false — does the animal appear conscious and alert?>,
-  "canMove": <true/false — does the animal appear able to move on its own?>,
-  "estimatedAge": "<rough estimate, e.g. 'puppy ~3 months', '~2 years adult', 'senior ~8+ years', 'unknown'>",
+  "hasFracture": <true/false>,
+  "isConscious": <true/false>,
+  "canMove": <true/false>,
+  "estimatedAge": "<e.g. 'puppy ~3 months', '~2 years adult', 'unknown'>",
   "bleedingLevel": "<NONE | MINOR | MODERATE | SEVERE>",
   "mobilityStatus": "<NORMAL | LIMPING | IMMOBILE | CANNOT DETERMINE>",
   "bodyCondition": "<HEALTHY | THIN | EMACIATED | OBESE | CANNOT DETERMINE>"
-}
-
-SEVERITY SCALE:
-- 9-10 = CRITICAL: Life-threatening (heavy bleeding, unconscious, paralyzed, hit by vehicle, severe trauma)
-- 7-8 = HIGH: Severe injury needing urgent care (suspected fracture, deep wound, severe malnourishment, difficulty breathing)
-- 4-6 = MODERATE: Visible injury or distress (limping, minor wounds, skin disease, dehydration, mild infection)
-- 1-3 = LOW: Mild condition (minor scrapes, appears scared or lost, stray needing shelter, healthy)
-
-URGENCY LEVELS:
-- IMMEDIATE: Life-threatening — dispatch rescue NOW (severe bleeding, unconscious, can't breathe, severe trauma)
-- URGENT: Serious but stable — rescue within 1 hour (fractures, deep wounds, can't walk, severe pain)
-- STANDARD: Needs attention within 24 hours (infections, mild limping, skin diseases, dehydration)
-- NON-URGENT: Safe for now — can wait for routine pickup (healthy stray, minor scrape, scared but uninjured)
-
-FRACTURE DETECTION:
-- Look for: abnormal limb angles, swelling at joints, inability to bear weight, visible bone displacement
-- If limb hangs at an unnatural angle, set hasFracture=true
-- If the animal is limping but limbs look normal, set hasFracture=false
-
-SPECIES VERIFICATION:
-- Carefully examine the photo. Dogs, cats, cows, birds, monkeys, etc. have distinct features.
-- If the image shows a different animal than what the user selected, set speciesMatch=false and explain.
-- If the image is not an animal at all (landscape, person, object), set detectedAnimal="Not an animal", severity=1, and note the issue.
-
-For tags, use simple lowercase keywords from this list:
-bleeding, fracture, broken bone, wound, laceration, bite wound, burn, malnourished, dehydration, emaciated,
-limping, skin disease, mange, infection, eye injury, eye infection, ear infection, tick infestation,
-paralysis, unconscious, poisoning, internal injury, abscess, lethargic, weakness, minor injury,
-healthy, scared, stray, open wound, hit by vehicle, immediate rescue, urgent care, not an animal, species mismatch
-
-IMPORTANT: Return ONLY valid JSON, no markdown code fences, no explanation text.`;
-}
-=======
-  "severity": <integer 1-10>,
-  "severityLabel": "<CRITICAL | HIGH | MODERATE | LOW>",
-  "description": "<Detailed clinical observation>",
-  "tags": ["<tag1>", "<tag2>", ...],
-  "note": "<Actionable instruction>"
 }
 
 ### Triage Protocol:
@@ -204,13 +151,15 @@ IMPORTANT: Return ONLY valid JSON, no markdown code fences, no explanation text.
 - **5-7 (MODERATE)**: Limping, skin disease, minor wounds, or eye infections.
 - **1-4 (LOW)**: Scared but healthy, minor scrapes, or stray needing shelter.
 
-### Dictionary:
-bleeding, fracture, wound, laceration, bite wound, burn, malnourished, emaciated, dehydration, limping, skin disease, mange, infection, eye injury, paralysis, unconscious, internal injury, abscess, maggot wound.
+### Tag Dictionary:
+bleeding, fracture, broken bone, wound, laceration, bite wound, burn, malnourished, dehydration, emaciated, limping, skin disease, mange, infection, eye injury, eye infection, ear infection, tick infestation, paralysis, unconscious, poisoning, internal injury, abscess, maggot wound, lethargic, weakness, minor injury, healthy, scared, stray, open wound, hit by vehicle, immediate rescue, urgent care, not an animal, species mismatch
 
-### Constraint:
-- If unsure, prioritize a HIGHER severity score.
-- Return ONLY the JSON object.`;
->>>>>>> 077f01d3551f5823cd42476e2efab7f09c84ceea
+### Constraints:
+- If unsure between two severity levels, prioritize HIGHER severity.
+- If the image is not an animal, set detectedAnimal="Not an animal", severity=1, speciesMatch=false.
+- Do NOT include the Thinking block in the output — return ONLY the JSON object.
+- Return ONLY valid JSON, no markdown code fences.`;
+}
 
 /**
  * Analyze an animal photo for injuries using Gemini Vision.
@@ -257,21 +206,13 @@ export async function analyzeAnimalInjury(
 
     const responseText = result.response.text();
 
-    // 3. Parse AI response
-<<<<<<< HEAD
-    const cleaned = responseText
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .trim();
-=======
-    // Extract everything between first { and last } to skip any "Thinking" preamble
+    // 3. Parse AI response — extract JSON between first { and last }
     const startIndex = responseText.indexOf("{");
     const endIndex = responseText.lastIndexOf("}");
-    
+
     if (startIndex === -1 || endIndex === -1) {
       throw new Error("No JSON object found in AI response");
     }
->>>>>>> 077f01d3551f5823cd42476e2efab7f09c84ceea
 
     const jsonString = responseText.substring(startIndex, endIndex + 1);
     const parsed = JSON.parse(jsonString);
