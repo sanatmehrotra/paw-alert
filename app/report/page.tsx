@@ -747,8 +747,8 @@ export default function ReportPage() {
           species: formData.species,
           description:
             formData.description || `AI Triage: ${triage.description}`,
-          lat: formData.lat || 28.6139,
-          lng: formData.lng || 77.209,
+          lat: formData.lat || 28.6145,
+          lng: formData.lng || 77.2395,
           location:
             formData.locationStatus === "GPS Location Captured"
               ? "Current Location"

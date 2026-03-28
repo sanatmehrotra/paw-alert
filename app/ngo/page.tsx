@@ -464,7 +464,7 @@ function LiveMapTab({ ngoId }: { ngoId: string }) {
       {/* Map */}
       <div className="relative rounded-xl border border-paw-orange/20 overflow-hidden">
         <MapplsMap
-          center={{ lat: 28.57, lng: 77.21 }}
+          center={{ lat: 28.6145, lng: 77.2395 }}
           zoom={12}
           className="h-[500px]"
           onMapReady={handleMapReady}

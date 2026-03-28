@@ -264,7 +264,7 @@ function DriverInner() {
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const stageComplete = currentStage >= missionStages.length - 1;
   const NextIcon = missionStages[Math.min(currentStage + 1, missionStages.length - 1)].icon;
-  const mapCenter = driverPosition || (report ? { lat: report.lat, lng: report.lng } : { lat: 28.57, lng: 77.21 });
+  const mapCenter = driverPosition || (report ? { lat: report.lat, lng: report.lng } : { lat: 28.6145, lng: 77.2395 });
 
   const severityColor = (s: number) => s >= 9 ? "#FF4F4F" : s >= 7 ? "#E47F42" : s >= 4 ? "#FFE00F" : "#4FC97E";
 

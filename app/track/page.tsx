@@ -231,14 +231,14 @@ function TrackInner() {
     );
   }
 
-  const incidentCenter = report ? { lat: report.lat, lng: report.lng } : { lat: 28.57, lng: 77.21 };
+  const mapCenter = driverPosition || (report ? { lat: report.lat, lng: report.lng } : { lat: 28.6145, lng: 77.2395 });
 
   return (
     <div className="min-h-screen bg-paw-bg">
       <div className="relative flex flex-col lg:flex-row h-[calc(100vh-4rem)]">
         {/* Map */}
         <MapplsMap
-          center={incidentCenter}
+          center={mapCenter}
           zoom={14}
           className="flex-1 overflow-hidden rounded-none"
           onMapReady={handleMapReady}
