@@ -141,7 +141,7 @@ export default function MapplsMap({
       setStatus("error");
       sdkPromise = null; // allow retry
     }
-  }, [containerId, center.lat, center.lng, zoom]);
+  }, [containerId, zoom]); // removed center.lat/lng to prevent flickering re-init
 
   useEffect(() => {
     initMap();

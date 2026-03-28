@@ -129,6 +129,11 @@ function TrackInner() {
       setIsLive(true);
       lastPingRef.current = Date.now();
 
+      // Pan map to latest location
+      if (mapRef.current) {
+        mapRef.current.setCenter(pos);
+      }
+
       // Move van marker
       vanMarkerRef.current?.setPosition(pos);
 
