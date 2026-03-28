@@ -112,7 +112,6 @@ function TrackInner() {
     routeLineRef.current.setPath(pts);
   }, []);
 
-  // ── Subscribe to driver GPS + stage broadcasts ────────────────────
   useEffect(() => {
     if (!report) return;
     const channel = createGpsChannel(report.id);
@@ -142,7 +141,7 @@ function TrackInner() {
       updateRoute(pos, dest);
     });
 
-    return unsubLocation;
+    return () => unsubLocation();
   }, [report?.id, currentStep, updateRoute]);
 
   // ── Compute ETA ───────────────────────────────────────────────────
