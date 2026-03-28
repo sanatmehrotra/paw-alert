@@ -27,32 +27,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProfile = async (userId: string) => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .single();
-      
-      if (!error && data) {
-        setRole(data.role);
+    /**
+     * Fetch user role using the server-side API (which uses service role key).
+     * This bypasses RLS on the profiles table — the anon client cannot read it.
+     */
+    const fetchRole = async (userId: string) => {
+      try {
+        const res = await fetch("/api/ngo/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        });
+        const data = await res.json();
+        if (data.status === "admin") {
+          setRole("admin");
+        } else if (data.status === "approved") {
+          setRole("ngo");
+        } else {
+          setRole(null);
+        }
+      } catch {
+        // Fallback: try direct query (may fail due to RLS)
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userId)
+          .single();
+        if (!error && data) {
+          setRole(data.role);
+        }
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchRole(session.user.id);
       }
-      setLoading(false);
+      setLoading(false); // Only set loading=false AFTER role is resolved
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchRole(session.user.id);
       } else {
         setRole(null);
       }

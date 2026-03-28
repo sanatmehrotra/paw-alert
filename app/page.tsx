@@ -131,7 +131,7 @@ export default function LandingPage() {
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Link>
               <Link
-                href="/ngo"
+                href="/ngo/login"
                 className="inline-flex items-center gap-2 rounded-full border-2 border-paw-orange/60 px-8 py-4 text-lg font-semibold text-paw-orange transition-all duration-300 hover:bg-paw-orange/10 hover:scale-105"
               >
                 I&apos;m an NGO →

@@ -6,17 +6,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { applicationId, ngoId, action, reason } = body;
 
-    // Support both old ngoId (ngos table) and new applicationId (ngo_applications)
     const appId = applicationId || ngoId;
     if (!appId || !action) {
       return NextResponse.json({ error: "applicationId and action are required" }, { status: 400 });
     }
 
     if (applicationId) {
-      // New flow — ngo_applications table
       const now = new Date().toISOString();
 
       if (action === "approve") {
+        // 1. Fetch user_id from the application
         const { data: app, error: fetchErr } = await supabaseAdmin
           .from("ngo_applications")
           .select("user_id")
@@ -24,21 +23,38 @@ export async function POST(request: Request) {
           .single();
 
         if (fetchErr || !app) {
-          return NextResponse.json({ error: "Application not found" }, { status: 404 });
+          console.error("[VERIFY] Application not found:", fetchErr);
+          return NextResponse.json({ error: "Application not found", detail: fetchErr?.message }, { status: 404 });
         }
 
-        await supabaseAdmin
+        console.log("[VERIFY] Approving application:", applicationId, "user_id:", app.user_id);
+
+        // 2. Update ngo_applications status
+        const { error: updateAppErr } = await supabaseAdmin
           .from("ngo_applications")
           .update({ status: "approved", reviewed_at: now })
           .eq("id", applicationId);
 
-        // Update profile so NGO can log in
-        await supabaseAdmin
+        if (updateAppErr) {
+          console.error("[VERIFY] Failed to update ngo_applications:", updateAppErr);
+          return NextResponse.json({ error: "Failed to update application", detail: updateAppErr.message }, { status: 500 });
+        }
+
+        // 3. Upsert profile with approved status
+        const { error: profileErr } = await supabaseAdmin
           .from("profiles")
           .upsert({ id: app.user_id, role: "ngo", ngo_status: "approved" });
 
+        if (profileErr) {
+          console.error("[VERIFY] Failed to update profile:", profileErr);
+          return NextResponse.json({ error: "Failed to update profile", detail: profileErr.message }, { status: 500 });
+        }
+
+        console.log("[VERIFY] SUCCESS — application approved, profile updated");
+
       } else if (action === "reject") {
-        await supabaseAdmin
+        // 1. Update application
+        const { error: updateErr } = await supabaseAdmin
           .from("ngo_applications")
           .update({
             status: "rejected",
@@ -47,7 +63,12 @@ export async function POST(request: Request) {
           })
           .eq("id", applicationId);
 
-        // Fetch user_id to update profile
+        if (updateErr) {
+          console.error("[VERIFY] Failed to reject application:", updateErr);
+          return NextResponse.json({ error: "Rejection failed", detail: updateErr.message }, { status: 500 });
+        }
+
+        // 2. Fetch user_id to update profile
         const { data: app } = await supabaseAdmin
           .from("ngo_applications")
           .select("user_id")
@@ -55,9 +76,13 @@ export async function POST(request: Request) {
           .single();
 
         if (app) {
-          await supabaseAdmin
+          const { error: profileErr } = await supabaseAdmin
             .from("profiles")
             .upsert({ id: app.user_id, role: "ngo", ngo_status: "rejected" });
+
+          if (profileErr) {
+            console.error("[VERIFY] Failed to update profile on reject:", profileErr);
+          }
         }
       }
     } else {
@@ -71,7 +96,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[VERIFY] Unhandled error:", err);
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 }

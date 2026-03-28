@@ -33,6 +33,18 @@ interface TriageResult {
   description: string;
   tags: string[];
   note: string;
+  // v2 enhanced fields
+  detectedAnimal: string;
+  speciesMatch: boolean;
+  speciesMismatchNote: string;
+  urgencyLevel: string;
+  hasFracture: boolean;
+  isConscious: boolean;
+  canMove: boolean;
+  estimatedAge: string;
+  bleedingLevel: string;
+  mobilityStatus: string;
+  bodyCondition: string;
 }
 
 interface FormData {
@@ -271,26 +283,29 @@ function Step1({
         </div>
       </div>
 
-      {/* Description */}
+      {/* Description (required) */}
       <div>
         <label className="mb-2 block text-sm font-medium text-paw-muted">
-          Description <span className="text-paw-muted/50">(optional)</span>
+          Description <span className="text-paw-red">*</span>
         </label>
         <textarea
           value={formData.description}
           onChange={(e) =>
             setFormData({ ...formData, description: e.target.value })
           }
-          placeholder="Describe the animal's condition, any visible injuries, behavior..."
+          placeholder="Describe the animal's condition: visible injuries, bleeding, limping, behavior, location details..."
           className="w-full resize-none rounded-xl border border-paw-orange/20 bg-paw-card p-4 text-sm text-paw-text placeholder:text-paw-muted/50 focus:border-paw-orange focus:outline-none"
           rows={3}
         />
+        {!formData.description.trim() && (
+          <p className="mt-1 text-xs text-paw-red/70">Description is required to help our AI triage accurately</p>
+        )}
       </div>
 
       {/* Next button */}
       <button
         onClick={onNext}
-        disabled={!formData.uploaded || !formData.species || uploading}
+        disabled={!formData.uploaded || !formData.species || !formData.description.trim() || uploading}
         className="group flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange py-4 text-lg font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-paw-orange/25 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Next
@@ -302,9 +317,13 @@ function Step1({
 
 function Step2({
   imageUrl,
+  species,
+  description,
   onNext,
 }: {
   imageUrl: string | null;
+  species: string;
+  description: string;
   onNext: (triage: TriageResult) => void;
 }) {
   const [analyzing, setAnalyzing] = useState(true);
@@ -318,10 +337,20 @@ function Step2({
         setTriage({
           severity: 5,
           severityLabel: "MODERATE",
-          description:
-            "Photo could not be analyzed. Manual assessment recommended.",
+          description: "Photo could not be analyzed. Manual assessment recommended.",
           tags: ["needs assessment"],
           note: "Image unavailable — rescue team should assess on-site.",
+          detectedAnimal: species || "Unknown",
+          speciesMatch: true,
+          speciesMismatchNote: "",
+          urgencyLevel: "STANDARD",
+          hasFracture: false,
+          isConscious: true,
+          canMove: true,
+          estimatedAge: "unknown",
+          bleedingLevel: "NONE",
+          mobilityStatus: "CANNOT DETERMINE",
+          bodyCondition: "CANNOT DETERMINE",
         });
         setAnalyzing(false);
         return;
@@ -331,7 +360,7 @@ function Step2({
         const res = await fetch("/api/triage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_url: imageUrl }),
+          body: JSON.stringify({ image_url: imageUrl, species, description }),
         });
 
         if (!res.ok) throw new Error("Triage API failed");
@@ -344,10 +373,20 @@ function Step2({
         setTriage({
           severity: 5,
           severityLabel: "MODERATE",
-          description:
-            "AI analysis encountered an error. Manual review recommended.",
+          description: "AI analysis encountered an error. Manual review recommended.",
           tags: ["needs assessment"],
           note: "Automated triage failed — rescue team should assess on-site.",
+          detectedAnimal: species || "Unknown",
+          speciesMatch: true,
+          speciesMismatchNote: "",
+          urgencyLevel: "STANDARD",
+          hasFracture: false,
+          isConscious: true,
+          canMove: true,
+          estimatedAge: "unknown",
+          bleedingLevel: "NONE",
+          mobilityStatus: "CANNOT DETERMINE",
+          bodyCondition: "CANNOT DETERMINE",
         });
       } finally {
         setAnalyzing(false);
@@ -514,6 +553,80 @@ function Step2({
                 <span>⚡</span>
                 <span>{triage.note}</span>
               </p>
+            </div>
+
+            {/* Species Verification */}
+            {!triage.speciesMatch && triage.speciesMismatchNote && (
+              <div className="rounded-xl border border-paw-gold/40 bg-paw-gold/5 px-5 py-4 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-paw-gold shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-sm font-semibold text-paw-gold">Species Mismatch Detected</div>
+                  <div className="text-sm text-paw-muted mt-1">{triage.speciesMismatchNote}</div>
+                  <div className="text-xs text-paw-muted mt-1">AI detected: <strong className="text-paw-text">{triage.detectedAnimal}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {/* Enhanced Assessment Grid */}
+            <div className="rounded-xl border border-paw-orange/20 bg-paw-card p-5 space-y-4">
+              <div className="text-xs text-paw-muted uppercase tracking-wider font-medium">Detailed Assessment</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {/* Urgency */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Urgency</div>
+                  <div className={`text-sm font-bold mt-0.5 ${
+                    triage.urgencyLevel === 'IMMEDIATE' ? 'text-paw-red' :
+                    triage.urgencyLevel === 'URGENT' ? 'text-paw-orange' :
+                    triage.urgencyLevel === 'STANDARD' ? 'text-paw-gold' : 'text-paw-green'
+                  }`}>{triage.urgencyLevel}</div>
+                </div>
+                {/* Fracture */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Fracture</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.hasFracture ? 'text-paw-red' : 'text-paw-green'}`}>
+                    {triage.hasFracture ? '⚠️ Suspected' : '✅ None Detected'}
+                  </div>
+                </div>
+                {/* Bleeding */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Bleeding</div>
+                  <div className={`text-sm font-bold mt-0.5 ${
+                    triage.bleedingLevel === 'SEVERE' ? 'text-paw-red' :
+                    triage.bleedingLevel === 'MODERATE' ? 'text-paw-orange' :
+                    triage.bleedingLevel === 'MINOR' ? 'text-paw-gold' : 'text-paw-green'
+                  }`}>{triage.bleedingLevel}</div>
+                </div>
+                {/* Consciousness */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Conscious</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.isConscious ? 'text-paw-green' : 'text-paw-red'}`}>
+                    {triage.isConscious ? '✅ Yes' : '❌ No / Unresponsive'}
+                  </div>
+                </div>
+                {/* Mobility */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Mobility</div>
+                  <div className={`text-sm font-bold mt-0.5 ${
+                    triage.mobilityStatus === 'NORMAL' ? 'text-paw-green' :
+                    triage.mobilityStatus === 'LIMPING' ? 'text-paw-orange' :
+                    triage.mobilityStatus === 'IMMOBILE' ? 'text-paw-red' : 'text-paw-muted'
+                  }`}>{triage.mobilityStatus}</div>
+                </div>
+                {/* Body Condition */}
+                <div className="rounded-lg bg-paw-bg p-3">
+                  <div className="text-[10px] text-paw-muted uppercase">Body Condition</div>
+                  <div className={`text-sm font-bold mt-0.5 ${
+                    triage.bodyCondition === 'HEALTHY' ? 'text-paw-green' :
+                    triage.bodyCondition === 'EMACIATED' ? 'text-paw-red' :
+                    triage.bodyCondition === 'THIN' ? 'text-paw-orange' : 'text-paw-muted'
+                  }`}>{triage.bodyCondition}</div>
+                </div>
+              </div>
+              {/* Age + Species row */}
+              <div className="flex gap-4 text-sm">
+                <div className="text-paw-muted">Detected: <strong className="text-paw-text">{triage.detectedAnimal}</strong></div>
+                <div className="text-paw-muted">Est. Age: <strong className="text-paw-text">{triage.estimatedAge}</strong></div>
+              </div>
             </div>
 
             <button
@@ -724,6 +837,8 @@ export default function ReportPage() {
             <Step2
               key="step2"
               imageUrl={formData.imageUrl}
+              species={formData.species}
+              description={formData.description}
               onNext={handleTriageComplete}
             />
           )}

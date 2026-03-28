@@ -465,10 +465,14 @@ export default function NgoRegisterPage() {
       const data = await res.json();
       setApplicationId(data.id || "NGO-ERR-0000");
       setStep(3);
+
+      // Sign out — user must wait for admin approval before accessing the dashboard
+      await supabase.auth.signOut();
     } catch (err) {
       console.error("Application submit error:", err);
       setApplicationId("NGO-ERR-0000");
       setStep(3);
+      await supabase.auth.signOut();
     } finally {
       setSubmitting(false);
     }

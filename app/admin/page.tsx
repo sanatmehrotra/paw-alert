@@ -309,7 +309,7 @@ function AdminDashboard() {
     fetch("/api/stats")
       .then(r => r.json())
       .then(data => setStats(data))
-      .catch(() => setStats({ totalRescues: 847, activeNgos: 34, pendingVerifications: 6, animalsInShelters: 312 }));
+      .catch(() => setStats({ totalRescues: 0, activeNgos: 0, pendingVerifications: 0, animalsInShelters: 0 }));
 
     fetch("/api/ngo-applications")
       .then(r => r.json())

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   PawPrint, Mail, Lock, ArrowRight, Loader2, AlertCircle,
@@ -9,10 +9,22 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/components/auth-provider";
 
 type GateStatus = "idle" | "pending" | "rejected";
 
 export default function NGOLoginPage() {
+  const { user, role, loading: authLoading } = useAuth();
+
+  // Auto-redirect if already logged in with an approved NGO role
+  useEffect(() => {
+    if (!authLoading && user && role === "ngo") {
+      router.push("/ngo");
+    }
+    if (!authLoading && user && role === "admin") {
+      router.push("/admin");
+    }
+  }, [user, role, authLoading]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -28,7 +40,7 @@ export default function NGOLoginPage() {
     setError("");
     setGateStatus("idle");
 
-    // 1. Sign in
+    // 1. Sign in with Supabase Auth
     const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authErr) {
@@ -40,39 +52,40 @@ export default function NGOLoginPage() {
     const userId = authData.user?.id;
     if (!userId) { setError("Authentication failed."); setLoading(false); return; }
 
-    // 2. Check profile role — admin bypasses NGO gate
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, ngo_status")
-      .eq("id", userId)
-      .single();
+    // 2. Call server-side status API (uses service role — bypasses RLS)
+    //    This is the ONLY reliable way to read profiles + ngo_applications
+    //    since those tables have restrictive RLS that blocks the anon client.
+    let ngoStatus = "pending";
+    let reason = "";
 
-    if (profile?.role === "admin") {
+    try {
+      const res = await fetch("/api/ngo/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      ngoStatus = data.status || "pending";
+      reason = data.rejectionReason || "";
+    } catch {
+      // If API call fails, default to pending (safe)
+    }
+
+    if (ngoStatus === "admin") {
       router.push("/admin");
       return;
     }
-
-    // 3. Check NGO application status
-    const { data: application } = await supabase
-      .from("ngo_applications")
-      .select("status, rejection_reason")
-      .eq("user_id", userId)
-      .order("submitted_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    const ngoStatus = profile?.ngo_status || application?.status || "pending";
 
     if (ngoStatus === "approved") {
       router.push("/ngo");
       return;
     }
 
-    // Not yet approved — sign them out and show status
+    // Not yet approved — sign them out and show gate message
     await supabase.auth.signOut();
 
     if (ngoStatus === "rejected") {
-      setRejectionReason(application?.rejection_reason || "Your application did not meet requirements.");
+      setRejectionReason(reason || "Your application did not meet requirements.");
       setGateStatus("rejected");
     } else {
       setGateStatus("pending");

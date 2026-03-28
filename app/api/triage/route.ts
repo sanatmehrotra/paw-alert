@@ -4,7 +4,7 @@ import { analyzeAnimalInjury } from "@/lib/gemini-triage";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { image_url } = body;
+    const { image_url, species, description } = body;
 
     if (!image_url) {
       return NextResponse.json(
@@ -13,7 +13,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await analyzeAnimalInjury(image_url);
+    const result = await analyzeAnimalInjury(
+      image_url,
+      species || "Unknown",
+      description || "",
+    );
 
     return NextResponse.json(result);
   } catch {

@@ -18,16 +18,46 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (authErr) {
+      setError(authErr.message);
       setLoading(false);
-    } else {
-      router.push("/admin");
+      return;
+    }
+
+    const userId = authData.user?.id;
+    if (!userId) {
+      setError("Authentication failed.");
+      setLoading(false);
+      return;
+    }
+
+    // Verify admin role server-side
+    try {
+      const res = await fetch("/api/ngo/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+
+      if (data.status === "admin") {
+        router.push("/admin");
+        return;
+      }
+
+      // Not admin — sign out and show error
+      await supabase.auth.signOut();
+      setError("This account does not have admin privileges.");
+      setLoading(false);
+    } catch {
+      await supabase.auth.signOut();
+      setError("Failed to verify admin access.");
+      setLoading(false);
     }
   };
 

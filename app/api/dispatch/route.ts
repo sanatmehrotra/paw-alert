@@ -1,26 +1,44 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { reportId, driverId } = body;
+    const { reportId, ngoId } = body;
 
     if (!reportId) {
       return NextResponse.json({ error: "reportId is required" }, { status: 400 });
     }
 
-    // Mock dispatch logic
-    const report = store.updateReportStatus(reportId, "dispatched");
-    
-    if (!report) {
+    // Update report: set status to dispatched AND assign to this NGO
+    const updatePayload: Record<string, unknown> = { status: "dispatched" };
+    if (ngoId) {
+      updatePayload.assigned_ngo_id = ngoId;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("reports")
+      .update(updatePayload)
+      .eq("id", reportId)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `Dispatched driver ${driverId || 'closest available'} to report ${reportId}`,
-      report 
+    // Return the driver link and tracker link
+    const driverLink = `/driver?id=${encodeURIComponent(reportId)}`;
+    const trackLink = `/track?id=${encodeURIComponent(reportId)}`;
+
+    return NextResponse.json({
+      success: true,
+      report: data,
+      driverLink,
+      trackLink,
     });
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

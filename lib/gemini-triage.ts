@@ -1,17 +1,30 @@
 // =============================================================
-// PawAlert — Gemini Vision AI Triage Service
-// Analyses animal injury photos using Google Gemini Vision API
+// PawAlert — Gemini Vision AI Triage Service (v2)
+// Enhanced species verification, urgency, fracture detection
 // Server-side only — GEMINI_API_KEY stays secret
 // =============================================================
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface TriageResult {
-  severity: number;           // 1–10
-  severityLabel: string;      // CRITICAL, HIGH, MODERATE, LOW
-  description: string;        // AI summary of visible injuries
-  tags: string[];             // e.g. ["fracture", "bleeding", "malnourished"]
-  note: string;               // Triage recommendation for NGO
+  severity: number;               // 1–10
+  severityLabel: string;          // CRITICAL, HIGH, MODERATE, LOW
+  description: string;            // AI summary of visible injuries
+  tags: string[];                 // e.g. ["fracture", "bleeding", "malnourished"]
+  note: string;                   // Triage recommendation for NGO
+
+  // v2 — Enhanced fields
+  detectedAnimal: string;         // What the AI actually sees in the photo (e.g. "Dog", "Cat", "Not an animal")
+  speciesMatch: boolean;          // Does detected animal match user-selected species?
+  speciesMismatchNote: string;    // Warning if mismatch (empty if match)
+  urgencyLevel: string;           // "IMMEDIATE" | "URGENT" | "STANDARD" | "NON-URGENT"
+  hasFracture: boolean;           // Suspected fracture detected?
+  isConscious: boolean;           // Is the animal conscious?
+  canMove: boolean;               // Can the animal move on its own?
+  estimatedAge: string;           // Rough age estimate (e.g. "~2 years", "puppy", "unknown")
+  bleedingLevel: string;          // "NONE" | "MINOR" | "MODERATE" | "SEVERE"
+  mobilityStatus: string;         // "NORMAL" | "LIMPING" | "IMMOBILE" | "CANNOT DETERMINE"
+  bodyCondition: string;          // "HEALTHY" | "THIN" | "EMACIATED" | "OBESE" | "CANNOT DETERMINE"
 }
 
 // Tag color mappings for the frontend
@@ -23,6 +36,7 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "critical":       { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🚨" },
   "unconscious":    { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "😵" },
   "poisoning":      { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "☠️" },
+  "hit by vehicle": { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🚗" },
 
   // Skeletal / structural
   "fracture":       { bg: "#E47F4220", text: "#E47F42", emoji: "🦴" },
@@ -40,6 +54,7 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "skin disease":   { bg: "#FF8C0020", text: "#FF8C00", emoji: "🩹" },
   "mange":          { bg: "#FF8C0020", text: "#FF8C00", emoji: "🩹" },
   "infection":      { bg: "#FF8C0020", text: "#FF8C00", emoji: "🦠" },
+  "open wound":     { bg: "#FF8C0020", text: "#FF8C00", emoji: "🩹" },
 
   // Nutritional / systemic
   "malnourished":   { bg: "#FFE00F20", text: "#D4A800", emoji: "⚖️" },
@@ -57,11 +72,18 @@ export const TAG_COLORS: Record<string, { bg: string; text: string; emoji: strin
   "paralysis":      { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🚫" },
   "seizure":        { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "⚡" },
 
+  // Urgent labels
+  "immediate rescue":{ bg: "#FF4F4F20", text: "#FF4F4F", emoji: "🚨" },
+  "urgent care":     { bg: "#E47F4220", text: "#E47F42", emoji: "⚡" },
+
   // Mild / general
   "healthy":        { bg: "#4FC97E20", text: "#4FC97E", emoji: "✅" },
   "minor injury":   { bg: "#4FC97E20", text: "#4FC97E", emoji: "🩹" },
   "scared":         { bg: "#3B9EFF20", text: "#3B9EFF", emoji: "😰" },
   "stray":          { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🐾" },
+  "not an animal":  { bg: "#FF4F4F20", text: "#FF4F4F", emoji: "❌" },
+  "species mismatch":{ bg: "#FFE00F20", text: "#D4A800", emoji: "⚠️" },
+  "needs assessment":{ bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🔍" },
 };
 
 /** Get tag styling — falls back to a neutral style for unknown tags */
@@ -70,43 +92,84 @@ export function getTagStyle(tag: string): { bg: string; text: string; emoji: str
   return TAG_COLORS[normalized] || { bg: "#BBBBCC20", text: "#BBBBCC", emoji: "🏷️" };
 }
 
-const TRIAGE_PROMPT = `You are a veterinary AI assistant for PawAlert, an animal rescue platform.
+/**
+ * Build the Gemini prompt v2 — species-aware, with richer medical output.
+ */
+function buildTriagePrompt(userSelectedSpecies: string, userDescription: string): string {
+  return `You are a veterinary AI assistant for PawAlert, an animal rescue platform in India.
 
-Analyze the provided image of a stray or injured animal. Return a JSON object with these exact fields:
+The reporter selected: "${userSelectedSpecies}" as the species.
+The reporter described: "${userDescription || "No description provided"}"
+
+Analyze the provided image carefully. Return a JSON object with ALL these fields:
 
 {
+  "detectedAnimal": "<What animal do you ACTUALLY see in the image? e.g. Dog, Cat, Cow, Bird, Monkey, Not an animal, Unclear>",
+  "speciesMatch": <true/false — does detectedAnimal match "${userSelectedSpecies}"?>,
+  "speciesMismatchNote": "<If mismatch, explain. e.g. 'The photo shows a cat, but user selected Dog'. Empty string if match>",
+  
   "severity": <number 1-10>,
   "severityLabel": "<CRITICAL | HIGH | MODERATE | LOW>",
-  "description": "<2-3 sentence description of visible injuries or condition>",
+  "description": "<3-4 sentence detailed medical description of visible injuries, body condition, and overall state>",
+  
   "tags": ["<injury tag 1>", "<injury tag 2>", ...],
-  "note": "<1 sentence triage recommendation for rescue team>"
+  "note": "<1-2 sentence triage recommendation for rescue team>",
+  
+  "urgencyLevel": "<IMMEDIATE | URGENT | STANDARD | NON-URGENT>",
+  "hasFracture": <true/false — is there a suspected bone fracture visible or implied?>,
+  "isConscious": <true/false — does the animal appear conscious and alert?>,
+  "canMove": <true/false — does the animal appear able to move on its own?>,
+  "estimatedAge": "<rough estimate, e.g. 'puppy ~3 months', '~2 years adult', 'senior ~8+ years', 'unknown'>",
+  "bleedingLevel": "<NONE | MINOR | MODERATE | SEVERE>",
+  "mobilityStatus": "<NORMAL | LIMPING | IMMOBILE | CANNOT DETERMINE>",
+  "bodyCondition": "<HEALTHY | THIN | EMACIATED | OBESE | CANNOT DETERMINE>"
 }
 
-Severity scale:
-- 9-10 = CRITICAL: Life-threatening, needs immediate rescue (heavy bleeding, unconscious, paralyzed, hit by vehicle)
-- 7-8 = HIGH: Severe injury needing urgent care (broken bone, deep wound, severe malnourishment)
-- 4-6 = MODERATE: Visible injury or distress (limping, minor wounds, skin disease, dehydration)
-- 1-3 = LOW: Mild condition (minor scrapes, appears scared but healthy, stray needing shelter)
+SEVERITY SCALE:
+- 9-10 = CRITICAL: Life-threatening (heavy bleeding, unconscious, paralyzed, hit by vehicle, severe trauma)
+- 7-8 = HIGH: Severe injury needing urgent care (suspected fracture, deep wound, severe malnourishment, difficulty breathing)
+- 4-6 = MODERATE: Visible injury or distress (limping, minor wounds, skin disease, dehydration, mild infection)
+- 1-3 = LOW: Mild condition (minor scrapes, appears scared or lost, stray needing shelter, healthy)
 
-For tags, use simple lowercase keywords from this list when applicable:
-bleeding, fracture, broken bone, wound, laceration, bite wound, burn, malnourished, dehydration, emaciated, 
-limping, skin disease, mange, infection, eye injury, eye infection, ear infection, tick infestation, 
-paralysis, unconscious, poisoning, internal injury, abscess, lethargic, weakness, minor injury, healthy, scared, stray
+URGENCY LEVELS:
+- IMMEDIATE: Life-threatening — dispatch rescue NOW (severe bleeding, unconscious, can't breathe, severe trauma)
+- URGENT: Serious but stable — rescue within 1 hour (fractures, deep wounds, can't walk, severe pain)
+- STANDARD: Needs attention within 24 hours (infections, mild limping, skin diseases, dehydration)
+- NON-URGENT: Safe for now — can wait for routine pickup (healthy stray, minor scrape, scared but uninjured)
 
-If the image does not appear to be an animal or is unclear, still provide your best assessment with a low severity score and note the uncertainty.
+FRACTURE DETECTION:
+- Look for: abnormal limb angles, swelling at joints, inability to bear weight, visible bone displacement
+- If limb hangs at an unnatural angle, set hasFracture=true
+- If the animal is limping but limbs look normal, set hasFracture=false
+
+SPECIES VERIFICATION:
+- Carefully examine the photo. Dogs, cats, cows, birds, monkeys, etc. have distinct features.
+- If the image shows a different animal than what the user selected, set speciesMatch=false and explain.
+- If the image is not an animal at all (landscape, person, object), set detectedAnimal="Not an animal", severity=1, and note the issue.
+
+For tags, use simple lowercase keywords from this list:
+bleeding, fracture, broken bone, wound, laceration, bite wound, burn, malnourished, dehydration, emaciated,
+limping, skin disease, mange, infection, eye injury, eye infection, ear infection, tick infestation,
+paralysis, unconscious, poisoning, internal injury, abscess, lethargic, weakness, minor injury,
+healthy, scared, stray, open wound, hit by vehicle, immediate rescue, urgent care, not an animal, species mismatch
 
 IMPORTANT: Return ONLY valid JSON, no markdown code fences, no explanation text.`;
+}
 
 /**
  * Analyze an animal photo for injuries using Gemini Vision.
- * @param imageUrl — Public URL of the uploaded animal photo
+ * v2: Now accepts species and description for cross-validation.
  */
-export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResult> {
+export async function analyzeAnimalInjury(
+  imageUrl: string,
+  userSpecies: string = "Unknown",
+  userDescription: string = "",
+): Promise<TriageResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
     console.warn("GEMINI_API_KEY not set — falling back to mock triage");
-    return mockTriage();
+    return mockTriage(userSpecies);
   }
 
   try {
@@ -118,16 +181,16 @@ export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResul
 
     const imageBuffer = await imageResponse.arrayBuffer();
     const base64Image = Buffer.from(imageBuffer).toString("base64");
-
-    // Detect MIME type from content-type header or default to jpeg
     const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
 
-    // 2. Call Gemini Vision API
+    // 2. Call Gemini Vision API with enhanced prompt
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
+    const prompt = buildTriagePrompt(userSpecies, userDescription);
+
     const result = await model.generateContent([
-      TRIAGE_PROMPT,
+      prompt,
       {
         inlineData: {
           data: base64Image,
@@ -138,7 +201,7 @@ export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResul
 
     const responseText = result.response.text();
 
-    // 3. Parse AI response (strip any markdown fences if present)
+    // 3. Parse AI response
     const cleaned = responseText
       .replace(/```json\s*/gi, "")
       .replace(/```\s*/g, "")
@@ -146,7 +209,7 @@ export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResul
 
     const parsed = JSON.parse(cleaned);
 
-    // 4. Validate and normalize
+    // 4. Validate and normalize all fields
     const severity = Math.min(10, Math.max(1, Math.round(Number(parsed.severity) || 5)));
     const severityLabel = parsed.severityLabel || getSeverityLabel(severity);
     const description = String(parsed.description || "Visible injuries detected. Rescue recommended.");
@@ -155,22 +218,72 @@ export async function analyzeAnimalInjury(imageUrl: string): Promise<TriageResul
       : [];
     const note = String(parsed.note || "Rescue team should assess the animal on-site.");
 
-    return { severity, severityLabel, description, tags, note };
+    // v2 fields
+    const detectedAnimal = String(parsed.detectedAnimal || "Unknown");
+    const speciesMatch = Boolean(parsed.speciesMatch ?? true);
+    const speciesMismatchNote = String(parsed.speciesMismatchNote || "");
+    const urgencyLevel = validateEnum(parsed.urgencyLevel, ["IMMEDIATE", "URGENT", "STANDARD", "NON-URGENT"], getUrgencyFromSeverity(severity));
+    const hasFracture = Boolean(parsed.hasFracture);
+    const isConscious = Boolean(parsed.isConscious ?? true);
+    const canMove = Boolean(parsed.canMove ?? true);
+    const estimatedAge = String(parsed.estimatedAge || "unknown");
+    const bleedingLevel = validateEnum(parsed.bleedingLevel, ["NONE", "MINOR", "MODERATE", "SEVERE"], "NONE");
+    const mobilityStatus = validateEnum(parsed.mobilityStatus, ["NORMAL", "LIMPING", "IMMOBILE", "CANNOT DETERMINE"], "CANNOT DETERMINE");
+    const bodyCondition = validateEnum(parsed.bodyCondition, ["HEALTHY", "THIN", "EMACIATED", "OBESE", "CANNOT DETERMINE"], "CANNOT DETERMINE");
+
+    // Add species mismatch tag if needed
+    if (!speciesMatch && !tags.includes("species mismatch")) {
+      tags.unshift("species mismatch");
+    }
+    if (hasFracture && !tags.includes("fracture")) {
+      tags.push("fracture");
+    }
+
+    return {
+      severity, severityLabel, description, tags, note,
+      detectedAnimal, speciesMatch, speciesMismatchNote,
+      urgencyLevel, hasFracture, isConscious, canMove,
+      estimatedAge, bleedingLevel, mobilityStatus, bodyCondition,
+    };
   } catch (error) {
     console.error("Gemini triage error:", error);
-    return mockTriage();
+    return mockTriage(userSpecies);
   }
 }
 
+/** Validate a string is one of allowed values */
+function validateEnum(value: unknown, allowed: string[], fallback: string): string {
+  const str = String(value || "").toUpperCase().trim();
+  return allowed.includes(str) ? str : fallback;
+}
+
+function getUrgencyFromSeverity(severity: number): string {
+  if (severity >= 9) return "IMMEDIATE";
+  if (severity >= 7) return "URGENT";
+  if (severity >= 4) return "STANDARD";
+  return "NON-URGENT";
+}
+
 /** Fallback triage when Gemini is unavailable */
-function mockTriage(): TriageResult {
-  const severity = Math.floor(Math.random() * 8) + 2; // 2–9
+function mockTriage(species: string): TriageResult {
+  const severity = Math.floor(Math.random() * 8) + 2;
   return {
     severity,
     severityLabel: getSeverityLabel(severity),
     description: "AI analysis unavailable. Manual assessment recommended upon arrival.",
     tags: ["needs assessment"],
     note: "Gemini Vision unavailable — please assess on-site.",
+    detectedAnimal: species || "Unknown",
+    speciesMatch: true,
+    speciesMismatchNote: "",
+    urgencyLevel: getUrgencyFromSeverity(severity),
+    hasFracture: false,
+    isConscious: true,
+    canMove: true,
+    estimatedAge: "unknown",
+    bleedingLevel: "NONE",
+    mobilityStatus: "CANNOT DETERMINE",
+    bodyCondition: "CANNOT DETERMINE",
   };
 }
 

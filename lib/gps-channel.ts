@@ -1,6 +1,6 @@
 // =============================================================
 // PawAlert — GPS Realtime Channel (Supabase Broadcast)
-// Ephemeral GPS streaming — no DB writes, purely in-memory
+// Ephemeral GPS + stage streaming — no DB writes, in-memory
 // =============================================================
 
 import { supabase } from "@/lib/supabase";
@@ -15,10 +15,13 @@ export interface GpsPayload {
   timestamp: number;
 }
 
-/**
- * Create (or join) a Supabase Realtime broadcast channel for a rescue ID.
- * Both the driver and the tracker call this with the same rescueId.
- */
+export interface StagePayload {
+  stageIndex: number;
+  stageId: string;
+  timestamp: number;
+}
+
+/** Create (or join) a Supabase Realtime broadcast channel for a rescue ID. */
 export function createGpsChannel(rescueId: string): RealtimeChannel {
   const channelName = `gps:${rescueId.replace("#", "")}`;
   return supabase.channel(channelName, {
@@ -26,9 +29,7 @@ export function createGpsChannel(rescueId: string): RealtimeChannel {
   });
 }
 
-/**
- * Driver broadcasts their current GPS position.
- */
+/** Driver broadcasts their current GPS position. */
 export async function broadcastLocation(
   channel: RealtimeChannel,
   payload: GpsPayload
@@ -40,10 +41,19 @@ export async function broadcastLocation(
   });
 }
 
-/**
- * Tracker subscribes to GPS updates from the driver.
- * Returns an unsubscribe function.
- */
+/** Driver broadcasts a mission stage update. */
+export async function broadcastStage(
+  channel: RealtimeChannel,
+  payload: StagePayload
+): Promise<void> {
+  await channel.send({
+    type: "broadcast",
+    event: "stage",
+    payload,
+  });
+}
+
+/** Tracker subscribes to GPS updates from the driver. Returns unsubscribe fn. */
 export function subscribeToLocation(
   channel: RealtimeChannel,
   callback: (payload: GpsPayload) => void
@@ -56,5 +66,42 @@ export function subscribeToLocation(
 
   return () => {
     channel.unsubscribe();
+  };
+}
+
+/** Tracker subscribes to stage updates from the driver. Attaches to existing channel. */
+export function subscribeToStage(
+  channel: RealtimeChannel,
+  callback: (payload: StagePayload) => void
+): void {
+  channel.on("broadcast", { event: "stage" }, ({ payload }) => {
+    callback(payload as StagePayload);
+  });
+}
+
+/**
+ * Subscribe to GPS broadcasts for multiple rescue IDs simultaneously.
+ * Used by NGO Live Map to track all active vans.
+ * Returns a cleanup function that unsubscribes all channels.
+ */
+export function subscribeToMultipleRescues(
+  rescueIds: string[],
+  onLocation: (rescueId: string, payload: GpsPayload) => void
+): () => void {
+  const channels: RealtimeChannel[] = rescueIds.map((id) => {
+    const channelName = `gps:${id.replace("#", "")}`;
+    const ch = supabase.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
+    ch
+      .on("broadcast", { event: "location" }, ({ payload }) => {
+        onLocation(id, payload as GpsPayload);
+      })
+      .subscribe();
+    return ch;
+  });
+
+  return () => {
+    channels.forEach((ch) => ch.unsubscribe());
   };
 }

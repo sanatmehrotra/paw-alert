@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
-export async function GET() {
-  const { data, error } = await supabaseAdmin
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const ngoId = searchParams.get("ngo_id");
+
+  let query = supabaseAdmin
     .from("animals")
     .select("*")
     .order("rescue_date", { ascending: false });
+
+  // Filter by NGO if provided
+  if (ngoId) {
+    query = query.eq("ngo_id", ngoId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
