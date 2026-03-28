@@ -267,17 +267,46 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* CTA SECTION */}
+      <section className="px-4 py-24 relative overflow-hidden">
+        <div className="absolute inset-0 bg-paw-orange/5 blur-3xl rounded-full translate-y-1/2 scale-150" />
+        <div className="mx-auto max-w-4xl relative z-10 text-center rounded-3xl border border-paw-orange/20 bg-paw-card/50 p-12 backdrop-blur-xl shrink-0">
+          <h2 className="text-4xl font-black mb-6">Need more help?</h2>
+          <p className="text-paw-muted mb-10 max-w-xl mx-auto">
+            Check our frequently asked questions for quick answers, or reach out to our team directly.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/faq"
+              className="px-8 py-4 rounded-full border-2 border-paw-orange/40 font-bold text-paw-orange hover:bg-paw-orange/5 transition-all w-full sm:w-auto"
+            >
+              Browse FAQs
+            </Link>
+            <Link
+              href="/contact"
+              className="px-8 py-4 rounded-full bg-paw-orange font-bold text-white shadow-lg shadow-paw-orange/20 hover:scale-105 transition-all w-full sm:w-auto"
+            >
+              Contact Us
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* FOOTER */}
       <footer className="border-t border-paw-orange/15 px-4 py-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-2">
             <PawPrint className="h-5 w-5 text-paw-orange" />
             <span className="text-lg font-bold text-paw-orange">
               Paw<span className="text-paw-text">Alert</span>
             </span>
           </div>
+          <div className="flex items-center gap-6">
+            <Link href="/faq" className="text-sm text-paw-muted hover:text-paw-orange transition-colors">FAQ</Link>
+            <Link href="/contact" className="text-sm text-paw-muted hover:text-paw-orange transition-colors">Contact</Link>
+          </div>
           <p className="text-sm text-paw-muted">
-            The 911 for India&apos;s strays — hackathon prototype
+            The 911 for India&apos;s strays — Hackathon Edition
           </p>
         </div>
       </footer>

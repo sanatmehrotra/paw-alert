@@ -15,7 +15,7 @@ import {
 import { speciesOptions } from "@/lib/mockData";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getTagStyle } from "@/lib/gemini-triage";
+import { getTagStyle, TriageResult } from "@/lib/gemini-triage";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fadeUp: any = {
@@ -33,18 +33,6 @@ interface TriageResult {
   description: string;
   tags: string[];
   note: string;
-  // v2 enhanced fields
-  detectedAnimal: string;
-  speciesMatch: boolean;
-  speciesMismatchNote: string;
-  urgencyLevel: string;
-  hasFracture: boolean;
-  isConscious: boolean;
-  canMove: boolean;
-  estimatedAge: string;
-  bleedingLevel: string;
-  mobilityStatus: string;
-  bodyCondition: string;
 }
 
 interface FormData {
@@ -65,28 +53,25 @@ function StepIndicator({ current }: { current: number }) {
       {steps.map((label, i) => (
         <div key={label} className="flex items-center gap-2">
           <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all ${
-              i < current
+            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all ${i < current
                 ? "bg-paw-green text-white"
                 : i === current
-                ? "bg-paw-orange text-white animate-pulse-glow"
-                : "bg-paw-card border border-paw-orange/30 text-paw-muted"
-            }`}
+                  ? "bg-paw-orange text-white animate-pulse-glow"
+                  : "bg-paw-card border border-paw-orange/30 text-paw-muted"
+              }`}
           >
             {i < current ? "✓" : i + 1}
           </div>
           <span
-            className={`hidden text-xs sm:block ${
-              i === current ? "text-paw-text font-medium" : "text-paw-muted"
-            }`}
+            className={`hidden text-xs sm:block ${i === current ? "text-paw-text font-medium" : "text-paw-muted"
+              }`}
           >
             {label}
           </span>
           {i < steps.length - 1 && (
             <div
-              className={`h-px w-8 sm:w-16 ${
-                i < current ? "bg-paw-green" : "bg-paw-orange/20"
-              }`}
+              className={`h-px w-8 sm:w-16 ${i < current ? "bg-paw-green" : "bg-paw-orange/20"
+                }`}
             />
           )}
         </div>
@@ -151,13 +136,12 @@ function Step1({
     >
       {/* Upload zone */}
       <div
-        className={`group relative flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all duration-300 ${
-          uploading
+        className={`group relative flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all duration-300 ${uploading
             ? "border-paw-orange bg-paw-orange/5"
             : formData.uploaded
-            ? "border-paw-green bg-paw-green/5"
-            : "border-paw-orange/40 bg-paw-card hover:border-paw-orange hover:bg-paw-orange/5"
-        }`}
+              ? "border-paw-green bg-paw-green/5"
+              : "border-paw-orange/40 bg-paw-card hover:border-paw-orange hover:bg-paw-orange/5"
+          }`}
         onClick={() =>
           !uploading && document.getElementById("fileInput")?.click()
         }
@@ -229,22 +213,19 @@ function Step1({
 
       {/* GPS Location */}
       <div
-        className={`flex items-center gap-3 rounded-xl border p-4 ${
-          formData.lat
+        className={`flex items-center gap-3 rounded-xl border p-4 ${formData.lat
             ? "border-paw-green/30 bg-paw-green/5"
             : "border-paw-orange/30 bg-paw-orange/5 animate-pulse"
-        }`}
+          }`}
       >
         <MapPin
-          className={`h-5 w-5 ${
-            formData.lat ? "text-paw-green" : "text-paw-orange"
-          }`}
+          className={`h-5 w-5 ${formData.lat ? "text-paw-green" : "text-paw-orange"
+            }`}
         />
         <div>
           <div
-            className={`flex items-center gap-2 text-sm font-medium ${
-              formData.lat ? "text-paw-green" : "text-paw-orange"
-            }`}
+            className={`flex items-center gap-2 text-sm font-medium ${formData.lat ? "text-paw-green" : "text-paw-orange"
+              }`}
           >
             {formData.lat ? (
               <CheckCircle2 className="h-4 w-4" />
@@ -271,11 +252,10 @@ function Step1({
             <button
               key={species}
               onClick={() => setFormData({ ...formData, species })}
-              className={`rounded-full px-5 py-2 text-sm font-medium transition-all duration-200 ${
-                formData.species === species
+              className={`rounded-full px-5 py-2 text-sm font-medium transition-all duration-200 ${formData.species === species
                   ? "bg-paw-orange text-white shadow-lg shadow-paw-orange/25"
                   : "border border-paw-orange/30 text-paw-muted hover:border-paw-orange hover:text-paw-text"
-              }`}
+                }`}
             >
               {species}
             </button>
@@ -439,7 +419,7 @@ function Step2({
             <p className="text-xl font-medium text-paw-orange">
               Analysing injury with Gemini Vision AI…
             </p>
-            <p className="text-sm text-paw-muted max-w-sm text-center">
+            <p className="text-sm text-paw-muted max-sm text-center">
               Our AI model is examining the photo for injuries, assessing
               severity, and identifying injury types
             </p>
@@ -574,11 +554,10 @@ function Step2({
                 {/* Urgency */}
                 <div className="rounded-lg bg-paw-bg p-3">
                   <div className="text-[10px] text-paw-muted uppercase">Urgency</div>
-                  <div className={`text-sm font-bold mt-0.5 ${
-                    triage.urgencyLevel === 'IMMEDIATE' ? 'text-paw-red' :
-                    triage.urgencyLevel === 'URGENT' ? 'text-paw-orange' :
-                    triage.urgencyLevel === 'STANDARD' ? 'text-paw-gold' : 'text-paw-green'
-                  }`}>{triage.urgencyLevel}</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.urgencyLevel === 'IMMEDIATE' ? 'text-paw-red' :
+                      triage.urgencyLevel === 'URGENT' ? 'text-paw-orange' :
+                        triage.urgencyLevel === 'STANDARD' ? 'text-paw-gold' : 'text-paw-green'
+                    }`}>{triage.urgencyLevel}</div>
                 </div>
                 {/* Fracture */}
                 <div className="rounded-lg bg-paw-bg p-3">
@@ -590,11 +569,10 @@ function Step2({
                 {/* Bleeding */}
                 <div className="rounded-lg bg-paw-bg p-3">
                   <div className="text-[10px] text-paw-muted uppercase">Bleeding</div>
-                  <div className={`text-sm font-bold mt-0.5 ${
-                    triage.bleedingLevel === 'SEVERE' ? 'text-paw-red' :
-                    triage.bleedingLevel === 'MODERATE' ? 'text-paw-orange' :
-                    triage.bleedingLevel === 'MINOR' ? 'text-paw-gold' : 'text-paw-green'
-                  }`}>{triage.bleedingLevel}</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.bleedingLevel === 'SEVERE' ? 'text-paw-red' :
+                      triage.bleedingLevel === 'MODERATE' ? 'text-paw-orange' :
+                        triage.bleedingLevel === 'MINOR' ? 'text-paw-gold' : 'text-paw-green'
+                    }`}>{triage.bleedingLevel}</div>
                 </div>
                 {/* Consciousness */}
                 <div className="rounded-lg bg-paw-bg p-3">
@@ -606,20 +584,18 @@ function Step2({
                 {/* Mobility */}
                 <div className="rounded-lg bg-paw-bg p-3">
                   <div className="text-[10px] text-paw-muted uppercase">Mobility</div>
-                  <div className={`text-sm font-bold mt-0.5 ${
-                    triage.mobilityStatus === 'NORMAL' ? 'text-paw-green' :
-                    triage.mobilityStatus === 'LIMPING' ? 'text-paw-orange' :
-                    triage.mobilityStatus === 'IMMOBILE' ? 'text-paw-red' : 'text-paw-muted'
-                  }`}>{triage.mobilityStatus}</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.mobilityStatus === 'NORMAL' ? 'text-paw-green' :
+                      triage.mobilityStatus === 'LIMPING' ? 'text-paw-orange' :
+                        triage.mobilityStatus === 'IMMOBILE' ? 'text-paw-red' : 'text-paw-muted'
+                    }`}>{triage.mobilityStatus}</div>
                 </div>
                 {/* Body Condition */}
                 <div className="rounded-lg bg-paw-bg p-3">
                   <div className="text-[10px] text-paw-muted uppercase">Body Condition</div>
-                  <div className={`text-sm font-bold mt-0.5 ${
-                    triage.bodyCondition === 'HEALTHY' ? 'text-paw-green' :
-                    triage.bodyCondition === 'EMACIATED' ? 'text-paw-red' :
-                    triage.bodyCondition === 'THIN' ? 'text-paw-orange' : 'text-paw-muted'
-                  }`}>{triage.bodyCondition}</div>
+                  <div className={`text-sm font-bold mt-0.5 ${triage.bodyCondition === 'HEALTHY' ? 'text-paw-green' :
+                      triage.bodyCondition === 'EMACIATED' ? 'text-paw-red' :
+                        triage.bodyCondition === 'THIN' ? 'text-paw-orange' : 'text-paw-muted'
+                    }`}>{triage.bodyCondition}</div>
                 </div>
               </div>
               {/* Age + Species row */}
@@ -778,7 +754,7 @@ export default function ReportPage() {
         body: JSON.stringify({
           species: formData.species,
           description:
-            formData.description || "Visible injuries, needs assessment",
+            formData.description || `AI Triage: ${triage.description}`,
           lat: formData.lat || 28.6139,
           lng: formData.lng || 77.209,
           location:
@@ -786,11 +762,8 @@ export default function ReportPage() {
               ? "Current Location"
               : "Unknown",
           image_url: formData.imageUrl,
-          // Pass AI triage data
-          severity: triage.severity,
+          severity_score: triage.severity,
           severity_label: triage.severityLabel,
-          ai_description: triage.description,
-          injury_tags: triage.tags,
         }),
       });
       const data = await res.json();
@@ -819,7 +792,7 @@ export default function ReportPage() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          Help save a life in 60 seconds
+          High-accuracy AI analysis powered by Gemini Vision
         </motion.p>
 
         <StepIndicator current={step} />
@@ -837,8 +810,6 @@ export default function ReportPage() {
             <Step2
               key="step2"
               imageUrl={formData.imageUrl}
-              species={formData.species}
-              description={formData.description}
               onNext={handleTriageComplete}
             />
           )}
