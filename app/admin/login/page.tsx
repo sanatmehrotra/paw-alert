@@ -96,7 +96,7 @@ export default function AdminLoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@pawalert.in"
+                  placeholder="admin@paw.com"
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl border border-paw-orange/20 bg-paw-bg text-paw-text placeholder:text-paw-muted/50 focus:border-paw-orange focus:outline-none transition-all"
                 />
