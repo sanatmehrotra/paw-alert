@@ -397,26 +397,41 @@ function LiveMapTab({ ngoId }: { ngoId: string }) {
   const markersRef = useRef<Record<string, mappls.Marker>>({});
   const mapRef = useRef<mappls.Map | null>(null);
 
-  // Fetch this NGO's dispatched reports
+  // Fetch this NGO's dispatched reports + seed last known van positions
   useEffect(() => {
     const load = () => {
       fetch(`/api/reports?ngo_id=${ngoId}&status=dispatched`)
         .then(r => r.json())
-        .then((data: any[]) => setDispatched(Array.isArray(data) ? data : []))
+        .then((data: any[]) => {
+          if (!Array.isArray(data)) return;
+          setDispatched(data);
+          // Seed last known van positions from DB (van_lat/van_lng)
+          const seed: Record<string, { lat: number; lng: number; timestamp: number }> = {};
+          data.forEach((r: any) => {
+            if (r.van_lat != null && r.van_lng != null) {
+              seed[r.id] = {
+                lat: r.van_lat,
+                lng: r.van_lng,
+                timestamp: r.van_updated_at ? new Date(r.van_updated_at).getTime() : Date.now() - 60000,
+              };
+            }
+          });
+          setVanPositions(prev => ({ ...seed, ...prev }));
+        })
         .catch(() => {});
     };
     load();
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
-  }, []);
+  }, [ngoId]);
 
-  // Subscribe to GPS for all dispatched rescues
+  // Subscribe to live GPS broadcasts for all dispatched rescues
   useEffect(() => {
     if (!dispatched.length) return;
     const ids = dispatched.map((r: any) => r.id);
     const unsub = subscribeToMultipleRescues(ids, (rescueId, payload: GpsPayload) => {
       setVanPositions(prev => ({ ...prev, [rescueId]: { lat: payload.lat, lng: payload.lng, timestamp: payload.timestamp } }));
-      // Move marker on map
+      // Move marker on map in real time
       if (markersRef.current[rescueId]) {
         markersRef.current[rescueId].setPosition({ lat: payload.lat, lng: payload.lng });
       }

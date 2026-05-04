@@ -81,13 +81,28 @@ function TrackInner() {
     async function loadReport() {
       try {
         const res = await fetch("/api/reports");
-        const all: Report[] = await res.json();
+        const all: any[] = await res.json();
+        let found: any = null;
         if (reportIdParam) {
-          const found = all.find(r => r.id === reportIdParam);
-          if (found) { setReport(found); setCurrentStep(statusToStep(found.status)); return; }
+          found = all.find(r => r.id === reportIdParam);
         }
-        // Fallback to latest
-        if (all.length > 0) { setReport(all[0]); setCurrentStep(statusToStep(all[0].status)); }
+        if (!found && all.length > 0) found = all[0];
+
+        if (found) {
+          setReport(found as Report);
+          setCurrentStep(statusToStep(found.status));
+          // Seed last known van GPS from DB
+          if (found.van_lat != null && found.van_lng != null) {
+            const seedPos = { lat: found.van_lat, lng: found.van_lng };
+            setDriverPosition(seedPos);
+            lastPingRef.current = found.van_updated_at
+              ? new Date(found.van_updated_at).getTime()
+              : Date.now() - 60000;
+            // Mark as live only if updated within last 30s
+            const age = Date.now() - lastPingRef.current;
+            setIsLive(age < 30000);
+          }
+        }
       } catch (err) {
         console.error(err);
       } finally {

@@ -71,6 +71,7 @@ function DriverInner() {
   const routeLineRef = useRef<mappls.Polyline | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const driverPositionRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastDbSyncRef = useRef<number>(0); // timestamp of last DB write
 
   // ── Fetch report from DB ──────────────────────────────────────────
   useEffect(() => {
@@ -130,7 +131,7 @@ function DriverInner() {
         // Move marker
         driverMarkerRef.current?.setPosition(newPos);
 
-        // Broadcast
+        // Broadcast via Supabase Realtime
         if (channelRef.current) {
           const payload: GpsPayload = {
             lat: latitude, lng: longitude,
@@ -138,6 +139,24 @@ function DriverInner() {
             timestamp: Date.now(),
           };
           broadcastLocation(channelRef.current, payload);
+        }
+
+        // Persist to DB every 5 seconds (so NGO map has last-known position)
+        const now = Date.now();
+        if (report && now - lastDbSyncRef.current > 5000) {
+          lastDbSyncRef.current = now;
+          fetch("/api/gps", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportId: report.id,
+              lat: latitude,
+              lng: longitude,
+              speed,
+              heading,
+              accuracy,
+            }),
+          }).catch(() => {}); // fire-and-forget
         }
       },
       (error) => {

@@ -65,10 +65,10 @@ export default function NGOLoginPage() {
         body: JSON.stringify({ userId }),
       });
       const data = await res.json();
-      ngoStatus = data.status || "pending";
+      ngoStatus = data.status || "not_registered";
       reason = data.rejectionReason || "";
     } catch {
-      // If API call fails, default to pending (safe)
+      ngoStatus = "not_registered";
     }
 
     if (ngoStatus === "admin") {
@@ -87,7 +87,10 @@ export default function NGOLoginPage() {
     if (ngoStatus === "rejected") {
       setRejectionReason(reason || "Your application did not meet requirements.");
       setGateStatus("rejected");
+    } else if (ngoStatus === "not_registered") {
+      setError("No NGO application found for this account. Please register first.");
     } else {
+      // pending or any other status
       setGateStatus("pending");
     }
 

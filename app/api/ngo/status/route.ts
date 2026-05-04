@@ -43,6 +43,12 @@ export async function POST(request: Request) {
     // Determine effective status
     const profileStatus = profile?.ngo_status;
     const appStatus = application?.status;
+
+    // If no profile AND no application → truly not registered
+    if (!profile && !application) {
+      return NextResponse.json({ status: "not_registered" });
+    }
+
     const effectiveStatus = profileStatus || appStatus || "pending";
 
     console.log("[NGO-STATUS] Effective status:", effectiveStatus, "(profile:", profileStatus, "app:", appStatus, ")");
