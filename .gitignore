@@ -1,10 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-.agents/skills
-.agent/skills
-.claude/skills
-supabase-setup.sql
-.supabase-reset.sql
-skills-lock.json
+
 # dependencies
 /node_modules
 /.pnp
