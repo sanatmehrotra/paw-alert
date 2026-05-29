@@ -1,0 +1,299 @@
+# PawAlert — Telegram Bot Implementation
+
+## CONTEXT
+PawAlert is a Next.js 14 App Router TypeScript application deployed at
+https://paw-alert.onrender.com with Supabase already integrated for auth
+and database. You are adding a Telegram bot as a second interface to the
+same Supabase backend. No new deployment or server — the bot runs as a
+Next.js API route on the existing Render deployment.
+
+---
+
+## BEFORE YOU START — AGENT MUST DO THESE FIRST
+
+1. Create a Telegram bot via BotFather:
+   - Message @BotFather on Telegram
+   - /newbot → follow prompts → save the bot token
+
+2. Set webhook after deployment:
+   POST https://api.telegram.org/bot<TOKEN>/setWebhook
+   Body: { url: "https://paw-alert.onrender.com/api/telegram" }
+
+3. Add to .env.local:
+   TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+   TELEGRAM_WEBHOOK_SECRET=any_random_string_you_generate
+
+4. Install:
+   npm install grammy
+
+5. Add UptimeRobot (uptimerobot.com — free):
+   Monitor type: HTTP(s)
+   URL: https://paw-alert.onrender.com/api/health
+   Interval: Every 5 minutes
+   This prevents Render free tier from sleeping
+
+---
+
+## SUPABASE CHANGES NEEDED
+
+Add telegram_chat_id column to profiles table:
+  ALTER TABLE profiles ADD COLUMN IF NOT EXISTS 
+  telegram_chat_id BIGINT UNIQUE;
+
+This links a Telegram user to their existing Supabase account.
+One column. Nothing else changes in the schema.
+
+---
+
+## API ROUTES TO CREATE
+
+### /api/telegram — Main webhook handler (POST only)
+Receives all Telegram updates. Initializes grammY bot instance.
+Uses webhookCallback from grammY to handle the request.
+Verify the secret token header before processing.
+
+### /api/health — Keep-alive endpoint (GET)
+Returns { status: "ok", timestamp: Date.now() }
+Used by UptimeRobot to keep Render awake.
+
+### /api/bot/notify — Internal endpoint (POST, server-side only)
+Called by other parts of the app to send Telegram messages.
+Example: NGO web dashboard assigns driver → calls this endpoint
+→ sends Telegram message to that driver's chat ID.
+Auth: verify request comes from same origin, not public.
+
+---
+
+## BOT LIBRARY STRUCTURE
+
+Create /lib/bot.ts — single bot instance shared across handlers.
+Create /lib/bot/ directory with separate files per feature:
+  - session.ts — user session management
+  - auth.ts — account linking flow
+  - citizen.ts — citizen commands and flows
+  - driver.ts — driver commands and flows
+  - admin.ts — admin commands and flows
+  - notifications.ts — outbound message helpers
+
+---
+
+## USER FLOWS TO IMPLEMENT
+
+### FLOW 1 — /start and Account Linking
+
+When any user sends /start:
+  Bot asks: "Are you a Citizen, NGO Driver, or Admin?"
+  Shows inline keyboard with those three options.
+
+On selection → bot asks for their registered email address.
+Bot looks up email in Supabase profiles table.
+If found:
+  - Check their role matches what they selected
+  - Save their telegram_chat_id to profiles table
+  - Confirm: "Account linked! Welcome [name]."
+  - Show their relevant command menu
+If not found:
+  - "No account found with this email."
+  - "Please register at https://paw-alert.onrender.com first."
+
+A user with an already-linked chat ID skips this on subsequent /start.
+
+---
+
+### FLOW 2 — Citizen: Report an Injured Animal
+
+Command: /report
+
+Step 1: Bot asks user to send a photo of the injured animal.
+Step 2: User sends photo → bot receives it → stores file_id temporarily in session.
+Step 3: Bot asks for species via inline keyboard:
+  [🐕 Dog] [🐈 Cat] [🐄 Cow] [🦅 Bird] [Other]
+Step 4: Bot asks user to share their location:
+  Shows a "Share Location" button (request_location: true)
+Step 5: User shares location → bot receives lat/lng.
+Step 6: Bot shows confirmation:
+  "Reporting injured [species] at [reverse geocoded location if possible,
+  otherwise coordinates]. Confirm?"
+  [✅ Confirm] [❌ Cancel]
+Step 7: On confirm:
+  - Insert into rescue_tickets table in Supabase:
+    reporter_id (from linked profile), species, photo (file_id or URL),
+    location (lat/lng), status: 'reported', source: 'telegram'
+  - Bot replies with rescue ID and status:
+    "🐾 Report submitted! Your Rescue ID: #PAW-2024-XXXX
+     We are finding the nearest NGO.
+     You will be notified when a van is dispatched."
+
+Note: AI severity scoring via Gemini is a separate concern.
+If Gemini is already integrated in the web flow, call the same
+service here. If not, skip severity for now and set a default.
+Agent should check existing implementation before deciding.
+
+---
+
+### FLOW 3 — Citizen: Check Rescue Status
+
+Command: /status
+
+Bot asks: "Enter your Rescue ID (e.g. PAW-2024-0847)"
+User replies with ID.
+Bot queries rescue_tickets table → returns current status as a
+formatted message showing which stages are complete and which is current.
+
+---
+
+### FLOW 4 — Driver: Receive and Accept Rescue Assignment
+
+This flow is triggered NOT by driver command but by NGO action on web.
+When NGO assigns a driver on the web dashboard:
+  Web app calls /api/bot/notify with:
+    { chatId: driver_telegram_chat_id, rescueId, species, 
+      severity, locationName, incidentLat, incidentLng }
+
+Bot sends the driver a message:
+  "🚨 New Rescue Assigned
+   Animal: [species]
+   Severity: [score]/10
+   Location: [locationName]
+   [✅ Accept] [❌ Decline]"
+
+On Accept:
+  - Update rescue_assignments table: status → accepted, accepted_at → now
+  - Bot sends driver:
+    "Assignment accepted. Please share your Live Location for 1 hour
+     so the rescue team can track you."
+  - Bot also sends MapmyIndia navigation deep link:
+    https://maps.mapmyindia.com/direction?to=[incidentLat],[incidentLng]
+  - Bot sends citizen a notification:
+    "🚐 A rescue van has been dispatched!
+     Track live: https://paw-alert.onrender.com/track?id=[rescueId]"
+
+On Decline:
+  - Update rescue_assignments: status → declined
+  - Notify NGO coordinator via their chat ID that driver declined
+  - [Agent note: decide how to handle reassignment — 
+    manual via web or auto-assign next available driver]
+
+---
+
+### FLOW 5 — Driver: Live Location → Supabase
+
+When driver shares Telegram Live Location (after accepting):
+  Bot receives location updates automatically via on('location') handler.
+  Each update: write lat/lng to driver_locations table in Supabase
+  with the rescue_id and updated_at timestamp.
+  Supabase Realtime then broadcasts to the web /track page.
+  No manual action needed from driver — just keep location shared.
+
+When Telegram stops sending live location updates (user stopped sharing):
+  Bot detects last_update was > 2 minutes ago.
+  Send driver: "📡 Live location stopped. Please reshare to continue tracking."
+
+---
+
+### FLOW 6 — Driver: Stage Updates
+
+After accepting, bot sends driver a persistent stage update panel:
+  "Update rescue stage:"
+  [📍 Reached Incident] [🐾 Animal Picked Up] [🏥 At Shelter] [✅ Rescue Complete]
+
+On each tap:
+  - Update rescue_tickets status in Supabase
+  - Send citizen a Telegram notification with the stage update
+  - "Animal Picked Up" → also send the web tracking link again
+  - "Rescue Complete" → send citizen:
+    "[animal] has been safely brought to shelter. Thank you for reporting! 🐾"
+
+---
+
+### FLOW 7 — Admin: NGO Application Notifications
+
+When a new NGO registers on the web (status: pending):
+  Web calls /api/bot/notify with admin's chat ID.
+  Bot sends admin:
+    "📋 New NGO Application
+     Organisation: [org_name]
+     City: [city]
+     Applied: [timestamp]
+     View full details: https://paw-alert.onrender.com/admin
+     [✅ Approve] [❌ Reject]"
+
+On Approve:
+  - Update ngo_applications status → verified in Supabase
+  - Notify NGO via email (if email service is integrated)
+  - Bot confirms to admin: "✅ [org_name] has been approved."
+
+On Reject:
+  - Bot asks admin: "Reason for rejection? (reply to this message)"
+  - Admin replies with reason
+  - Update ngo_applications: status → rejected, rejection_reason → text
+  - Bot confirms to admin.
+
+Note: Admin sees full document details only on web /admin page.
+Telegram gives quick approve/reject. Full review stays on web.
+
+---
+
+## SESSION MANAGEMENT
+
+Use grammY's built-in session for multi-step flows (report, linking).
+Store session in memory for now.
+Agent note: for production, consider Redis session store —
+but evaluate if it's needed at current scale first.
+
+Session should track:
+  - current flow step
+  - temporarily captured photo file_id
+  - temporarily captured species selection
+  before final Supabase insert.
+
+---
+
+## ERROR HANDLING
+
+Every Supabase query must have error handling.
+If query fails: bot replies "Something went wrong. Please try again."
+Log the actual error server-side.
+
+If user tries a command without linking their account first:
+  "Please link your account first. Send /start to begin."
+
+If driver tries to accept a rescue that was already accepted by someone else:
+  "This rescue was already accepted by another driver."
+
+---
+
+## COMMANDS TO REGISTER WITH BOTFATHER
+
+After bot is working, set these commands via BotFather /setcommands:
+
+For citizens:
+start - Link your account
+report - Report an injured animal
+status - Check rescue status
+help - Show available commands
+
+For drivers (set separately as scoped commands if grammY supports it,
+otherwise include in /help):
+start - Link your account
+myrescues - View today's assignments
+help - Show available commands
+
+---
+
+## WHAT THE AGENT SHOULD FIGURE OUT
+
+1. How NGO web dashboard triggers the /api/bot/notify call —
+   check existing web codebase for where driver assignment happens
+   and add the notify call there.
+
+2. Whether Gemini severity scoring is already a callable function
+   or only happens on form submit — reuse it in the report flow if possible.
+
+3. How admin chat IDs are stored — add an is_admin_telegram flag or
+   check role from profiles table using linked chat ID.
+
+4. grammY scene/conversation API for managing multi-step flows
+   cleanly — agent should evaluate and choose the right grammY pattern.
+
+---

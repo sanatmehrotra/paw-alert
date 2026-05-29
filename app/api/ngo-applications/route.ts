@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { notifyAdminNgoApplication } from "@/lib/bot/notifications";
 
 // GET all NGO applications (admin use)
 export async function GET() {
@@ -49,6 +50,32 @@ export async function POST(request: Request) {
       role: "ngo",
       ngo_status: "pending",
     });
+
+    // Notify all admin accounts via Telegram (fire-and-forget)
+    try {
+      const { data: adminProfiles } = await supabaseAdmin
+        .from("profiles")
+        .select("telegram_chat_id")
+        .eq("role", "admin")
+        .not("telegram_chat_id", "is", null);
+
+      if (adminProfiles && adminProfiles.length > 0) {
+        await Promise.all(
+          adminProfiles.map((admin) =>
+            notifyAdminNgoApplication({
+              chatId: admin.telegram_chat_id,
+              applicationId: id,
+              orgName: org_name,
+              city: city || "Unknown",
+              email,
+              submittedAt: new Date().toISOString(),
+            })
+          )
+        );
+      }
+    } catch (notifyErr) {
+      console.error("[NGO-APP] Telegram notify failed (non-fatal):", notifyErr);
+    }
 
     return NextResponse.json(data, { status: 201 });
   } catch {
