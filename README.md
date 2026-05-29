@@ -172,20 +172,20 @@ Create a `.env.local` file at the root of the project:
 
 ```env
 # Supabase Database Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://ccjcdjyiparrfzfpwinh.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # Google Gemini API
-GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY=AIzaSy...
 
 # Mappls Maps Integration
-NEXT_PUBLIC_MAPPLS_KEY=your_mappls_client_key
+NEXT_PUBLIC_MAPPLS_KEY=zatl...
 
 # Telegram Bot Configurations
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_WEBHOOK_SECRET=your_telegram_webhook_secret
-NEXT_PUBLIC_APP_URL=https://your-app-domain.onrender.com
+TELEGRAM_BOT_TOKEN=8868395100:AAHycQMyChTt20sY6_LT7pzyv_cNoaaORww
+TELEGRAM_WEBHOOK_SECRET=paw-alert-secret-2025
+NEXT_PUBLIC_APP_URL=https://paw-alert.onrender.com
 ```
 
 ---
@@ -215,13 +215,13 @@ Telegram webhooks require a secure public HTTPS endpoint. To mock this locally:
 3. **Register your local tunnel URL with Telegram**:
    Copy the `https://xxxx.ngrok.app` URL forwarding address given by ngrok, and call this API URL in your web browser:
    ```http
-   https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<YOUR_NGROK_FORWARDING_URL>/api/telegram&secret_token=<YOUR_TELEGRAM_WEBHOOK_SECRET>
+   https://api.telegram.org/bot8868395100:AAHycQMyChTt20sY6_LT7pzyv_cNoaaORww/setWebhook?url=https://YOUR_NGROK_FORWARDING_URL/api/telegram&secret_token=paw-alert-secret-2025
    ```
 4. **Trigger Commands**:
    Send `/start` or `/report` to the bot on Telegram and check your Next.js terminal logs to view incoming payloads in real time.
 5. **Restore production webhook when finished**:
    ```http
-   https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<YOUR_PRODUCTION_APP_URL>/api/telegram&secret_token=<YOUR_TELEGRAM_WEBHOOK_SECRET>
+   https://api.telegram.org/bot8868395100:AAHycQMyChTt20sY6_LT7pzyv_cNoaaORww/setWebhook?url=https://paw-alert.onrender.com/api/telegram&secret_token=paw-alert-secret-2025
    ```
 
 ### 3. Production Deployment & Keep-Alive
@@ -246,4 +246,4 @@ help - Display all available commands
 ```
 
 ---
-*Built for PawAlert India Innovates 2026. Empowering communities, saving street lives.*
+
