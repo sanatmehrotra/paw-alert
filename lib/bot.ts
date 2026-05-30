@@ -9,7 +9,6 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { notifyDriverAssignment, sendMessage } from "./bot/notifications";
 import { analyzeAnimalInjury } from "@/lib/gemini-triage";
 
-
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 
 if (!TOKEN) {
