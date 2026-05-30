@@ -117,16 +117,51 @@ bot.command("help", async (ctx) => {
 
   let text = `🐾 <b>PawAlert Commands</b>\n\n`;
   if (!profile) {
-    text += `/start — Link your account\n/help — This message`;
+    text += `/start — Link your NGO/Admin account\n/report — Report an injured animal 📸\n/status — Check rescue status by ID 🔍\n/help — Show this message`;
   } else if (isAdmin) {
-    text += `/start — Relink account\n/help — This message\n\nAdmin notifications are sent automatically when new NGOs apply.`;
+    text += `/start — Relink account\n/help — Show this message\n/logout — Unlink this Telegram account 🔓\n\nAdmin notifications arrive automatically when NGOs apply.`;
   } else if (isDriver) {
-    text += `/myrescues — View today's active missions\n/help — This message\n\nYou'll be notified automatically when a rescue is assigned.`;
+    text += `/myrescues — View today's active missions 🚐\n/status — Check any rescue status 🔍\n/help — Show this message\n/logout — Unlink this Telegram account 🔓\n\nDispatch alerts arrive automatically.`;
   } else {
-    text += `/report — Report an injured animal 📸\n/status — Check rescue status 🔍\n/help — This message`;
+    text += `/report — Report an injured animal 📸\n/status — Check rescue status by ID 🔍\n/help — Show this message\n/logout — Unlink this Telegram account 🔓`;
   }
 
   await ctx.reply(text, { parse_mode: "HTML" });
+});
+
+// ─────────────────────────────────────────────────────────────
+// /logout command — unlinks Telegram chat from Supabase profile
+// ─────────────────────────────────────────────────────────────
+bot.command("logout", async (ctx) => {
+  const chatId = ctx.chat.id;
+  const profile = await getProfileByChatId(chatId);
+
+  if (!profile) {
+    ctx.session = { step: "idle" };
+    await ctx.reply(
+      "No account is currently linked to this chat.\n\nSend /start to link an NGO/Admin account, or /report to report an animal."
+    );
+    return;
+  }
+
+  try {
+    // Remove telegram_chat_id from profiles table
+    await supabaseAdmin
+      .from("profiles")
+      .update({ telegram_chat_id: null })
+      .eq("telegram_chat_id", chatId);
+
+    // Clear all session state
+    ctx.session = { step: "idle" };
+
+    await ctx.reply(
+      "🔓 <b>Logged out successfully.</b>\n\nYour Telegram account has been unlinked from PawAlert.\n\nSend /start to link a different account, or /report to report an animal without an account.",
+      { parse_mode: "HTML" }
+    );
+  } catch (err) {
+    console.error("[BOT] Logout error:", err);
+    await ctx.reply("Something went wrong during logout. Please try again.");
+  }
 });
 
 // ─────────────────────────────────────────────────────────────
