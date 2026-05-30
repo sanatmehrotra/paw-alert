@@ -74,17 +74,49 @@ function generateRescueId() {
   return `PAW-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
 }
 
+/** Verify password via Supabase Auth REST API (stateless, no session created) */
+async function verifyPassword(email: string, password: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+        },
+        body: JSON.stringify({ email, password }),
+      }
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Parse a rescue ID from a URL or raw ID string */
+function parseRescueId(input: string): string | null {
+  // URL format: /driver?id=XXX or /track?id=XXX
+  const urlMatch = input.match(/[?&]id=([A-Z0-9-]+)/i);
+  if (urlMatch) return urlMatch[1].toUpperCase();
+  // Raw ID: PAW-2026-1234
+  const idMatch = input.match(/PAW-\d{4}-\d{3,4}/i);
+  if (idMatch) return idMatch[0].toUpperCase();
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────
 // /start command
 // ─────────────────────────────────────────────────────────────
 bot.command("start", async (ctx) => {
   const chatId = ctx.chat.id;
-  // Check if already linked
   const profile = await getProfileByChatId(chatId);
+
   if (profile) {
+    const roleLabel = profile.role === "admin" ? "Admin 🔐" : "NGO / Driver 🚐";
     ctx.session = { step: "idle", linkedChatId: chatId, linkedRole: profile.role };
     await ctx.reply(
-      `👋 Welcome back! Your account is already linked as <b>${profile.role.toUpperCase()}</b>.\n\nUse /help to see available commands.`,
+      `👋 Welcome back! Your account is linked as <b>${roleLabel}</b>.\n\nSend /help to see your commands, or /logout to unlink.`,
       { parse_mode: "HTML" }
     );
     return;
@@ -92,15 +124,21 @@ bot.command("start", async (ctx) => {
 
   ctx.session = { step: "awaiting_role" };
   await ctx.reply(
-    "🐾 <b>Welcome to PawAlert!</b>\n\nI help rescue injured street animals across India.\n\nTo get started, please tell me who you are:",
+    `🐾 <b>Welcome to PawAlert!</b>\n\nI help rescue injured street animals across India.\n\n` +
+    `📸 <b>Want to report an animal?</b> Just send /report — no account needed!\n\n` +
+    `To link a professional account, select your role:`,
     {
       parse_mode: "HTML",
       reply_markup: {
-        inline_keyboard: [[
-          { text: "🧑 Citizen", callback_data: "role:citizen" },
-          { text: "🚐 NGO / Driver", callback_data: "role:ngo" },
-          { text: "🔐 Admin", callback_data: "role:admin" },
-        ]],
+        inline_keyboard: [
+          [
+            { text: "🏢 NGO Coordinator", callback_data: "role:ngo" },
+            { text: "🚗 Driver", callback_data: "role:driver" },
+          ],
+          [
+            { text: "🔐 Admin", callback_data: "role:admin" },
+          ],
+        ],
       },
     }
   );
@@ -111,18 +149,30 @@ bot.command("start", async (ctx) => {
 // ─────────────────────────────────────────────────────────────
 bot.command("help", async (ctx) => {
   const profile = await getProfileByChatId(ctx.chat.id);
-  const isDriver = profile?.role === "ngo";
+  const isNgo = profile?.role === "ngo";
   const isAdmin = profile?.role === "admin";
 
   let text = `🐾 <b>PawAlert Commands</b>\n\n`;
   if (!profile) {
-    text += `/start — Link your NGO/Admin account\n/report — Report an injured animal 📸\n/status — Check rescue status by ID 🔍\n/help — Show this message`;
+    text += `<b>Anyone (no login needed):</b>\n`;
+    text += `/report — Report an injured animal 📸\n`;
+    text += `/status — Check rescue status by ID 🔍\n\n`;
+    text += `<b>Professional accounts:</b>\n`;
+    text += `/start — Link your NGO / Driver / Admin account`;
   } else if (isAdmin) {
-    text += `/start — Relink account\n/help — Show this message\n/logout — Unlink this Telegram account 🔓\n\nAdmin notifications arrive automatically when NGOs apply.`;
-  } else if (isDriver) {
-    text += `/myrescues — View today's active missions 🚐\n/status — Check any rescue status 🔍\n/help — Show this message\n/logout — Unlink this Telegram account 🔓\n\nDispatch alerts arrive automatically.`;
-  } else {
-    text += `/report — Report an injured animal 📸\n/status — Check rescue status by ID 🔍\n/help — Show this message\n/logout — Unlink this Telegram account 🔓`;
+    text += `<b>Admin Commands:</b>\n`;
+    text += `/report — Report an animal 📸\n`;
+    text += `/status — Check rescue status 🔍\n`;
+    text += `/logout — Unlink this account 🔓\n\n`;
+    text += `ℹ️ NGO approval/rejection alerts arrive automatically.`;
+  } else if (isNgo) {
+    text += `<b>NGO / Driver Commands:</b>\n`;
+    text += `/track — Accept a rescue by ID or link 🚗\n`;
+    text += `/myrescues — View active missions 🚐\n`;
+    text += `/report — Report an animal 📸\n`;
+    text += `/status — Check rescue status 🔍\n`;
+    text += `/logout — Unlink this account 🔓\n\n`;
+    text += `ℹ️ Dispatch alerts arrive automatically. Share your <b>Live Location</b> during a rescue to enable citizen tracking.`;
   }
 
   await ctx.reply(text, { parse_mode: "HTML" });
@@ -161,6 +211,38 @@ bot.command("logout", async (ctx) => {
     console.error("[BOT] Logout error:", err);
     await ctx.reply("Something went wrong during logout. Please try again.");
   }
+});
+
+// ─────────────────────────────────────────────────────────────
+// /track command — drivers accept a rescue by link or ID
+// ─────────────────────────────────────────────────────────────
+bot.command("track", async (ctx) => {
+  const profile = await getProfileByChatId(ctx.chat.id);
+  if (!profile || profile.role !== "ngo") {
+    await ctx.reply(
+      "⚠️ This command is for linked NGO/Driver accounts.\n\nSend /start to link your account first."
+    );
+    return;
+  }
+
+  // Check if ID was passed as argument: /track PAW-2026-1234
+  const args = (ctx.message?.text || "").split(/\s+/).slice(1).join(" ").trim();
+  if (args) {
+    const rescueId = parseRescueId(args);
+    if (rescueId) {
+      await handleAcceptRescue(ctx, rescueId);
+      return;
+    }
+  }
+
+  ctx.session.step = "track_awaiting_id";
+  await ctx.reply(
+    `🔗 <b>Accept a Rescue</b>\n\nPaste the driver link or rescue ID sent by your NGO coordinator:\n\n` +
+    `<i>Examples:</i>\n` +
+    `<code>PAW-2026-4823</code>\n` +
+    `<code>https://paw-alert.onrender.com/driver?id=PAW-2026-4823</code>`,
+    { parse_mode: "HTML" }
+  );
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -239,10 +321,10 @@ bot.on("callback_query:data", async (ctx) => {
 
   // ── Role selection ──────────────────────────────────────────
   if (data.startsWith("role:")) {
-    const role = data.split(":")[1] as "citizen" | "ngo" | "admin";
+    const role = data.split(":")[1] as "ngo" | "driver" | "admin";
     ctx.session.selectedRole = role;
     ctx.session.step = "awaiting_email";
-    const labels = { citizen: "Citizen", ngo: "NGO / Driver", admin: "Admin" };
+    const labels: Record<string, string> = { ngo: "NGO Coordinator", driver: "Driver", admin: "Admin" };
     await ctx.reply(
       `👤 <b>${labels[role]}</b> selected.\n\nPlease enter your registered PawAlert email address:`,
       { parse_mode: "HTML" }
@@ -386,6 +468,19 @@ bot.on("message:location", async (ctx) => {
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
 
+  // ── Auto-detect driver links pasted in chat ─────────────────
+  if (ctx.session.step === "idle" || !ctx.session.step) {
+    const rescueId = parseRescueId(text);
+    if (rescueId && text.includes("driver")) {
+      const profile = await getProfileByChatId(ctx.chat.id);
+      if (profile?.role === "ngo") {
+        await ctx.reply(`🔍 Detected rescue <code>${rescueId}</code> from link. Accepting...`, { parse_mode: "HTML" });
+        await handleAcceptRescue(ctx, rescueId);
+        return;
+      }
+    }
+  }
+
   // ── Account linking — Step 1: Email lookup ──────────────────
   if (ctx.session.step === "awaiting_email") {
     const email = text.toLowerCase();
@@ -395,57 +490,41 @@ bot.on("message:text", async (ctx) => {
       const profile = await lookupProfile(email);
 
       if (!profile) {
-        // No account found — guide them to register
-        const isNgoOrAdmin = ctx.session.selectedRole === "ngo" || ctx.session.selectedRole === "admin";
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://paw-alert.onrender.com";
         await ctx.reply(
           `❌ No account found for <b>${email}</b>.\n\n` +
-          (isNgoOrAdmin
-            ? `Please register your NGO at:\n<a href="${process.env.NEXT_PUBLIC_APP_URL || "https://paw-alert.onrender.com"}/ngo/register">${process.env.NEXT_PUBLIC_APP_URL || "https://paw-alert.onrender.com"}/ngo/register</a>\n\nOnce approved, you can link your account here.`
-            : `You can report animals directly using /report — no account needed!`),
+          `Please register at:\n<a href="${appUrl}/ngo/register">${appUrl}/ngo/register</a>\n\n` +
+          `Once approved, come back and send /start to link.`,
           { parse_mode: "HTML" }
         );
         ctx.session.step = "idle";
         return;
       }
 
-      // Verify role matches selection
+      // Verify role compatibility
+      const selectedRole = ctx.session.selectedRole;
       const roleMatches =
-        (ctx.session.selectedRole === "admin" && profile.role === "admin") ||
-        (ctx.session.selectedRole === "ngo" && profile.role === "ngo") ||
-        (ctx.session.selectedRole === "citizen" && !["admin", "ngo"].includes(profile.role));
+        (selectedRole === "admin" && profile.role === "admin") ||
+        (selectedRole === "ngo" && profile.role === "ngo") ||
+        (selectedRole === "driver" && profile.role === "ngo"); // drivers are ngo role in DB
 
       if (!roleMatches) {
+        const hint = profile.role === "admin" ? "Admin" : profile.role === "ngo" ? "NGO/Driver" : profile.role;
         await ctx.reply(
-          `⚠️ Role mismatch. Your registered role is <b>${profile.role}</b>, not <b>${ctx.session.selectedRole}</b>.\n\nSend /start to try again with the correct role.`,
+          `⚠️ Role mismatch. Your account is registered as <b>${hint}</b>.\n\nSend /start and select the correct role.`,
           { parse_mode: "HTML" }
         );
         ctx.session.step = "idle";
         return;
       }
 
-      // Generate 6-digit OTP and send via Supabase Auth email
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
-      ctx.session.otpEmail = email;
-      ctx.session.otpCode = otp;
-      ctx.session.otpUserId = profile.userId;
-      ctx.session.otpAttempts = 0;
-      ctx.session.step = "awaiting_otp";
-
-      // Send OTP via Supabase Auth (triggers auth email to user)
-      try {
-        await supabaseAdmin.auth.admin.updateUserById(profile.userId, {
-          // Supabase doesn't have native OTP send via admin — we use generateLink
-          // so instead we generate our own OTP and send it through the bot notifications
-          // (no separate email needed — we send it back as next message instruction)
-        });
-      } catch { /* non-fatal */ }
+      // Store email + userId, ask for password
+      ctx.session.authEmail = email;
+      ctx.session.authUserId = profile.userId;
+      ctx.session.step = "awaiting_password";
 
       await ctx.reply(
-        `🔐 <b>Verification Required</b>\n\n` +
-        `For security, we need to verify you own <b>${email}</b>.\n\n` +
-        `Your verification code is:\n\n` +
-        `<code>${otp}</code>\n\n` +
-        `<i>This code expires in 5 minutes. You have 3 attempts.</i>`,
+        `✅ Account found for <b>${email}</b>.\n\n🔒 Now enter your <b>password</b>:`,
         { parse_mode: "HTML" }
       );
     } catch (err) {
@@ -456,56 +535,77 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
-  // ── Account linking — Step 2: OTP verification ──────────────
-  if (ctx.session.step === "awaiting_otp") {
-    const entered = text.replace(/\s/g, "");
-    const attempts = (ctx.session.otpAttempts || 0) + 1;
-    ctx.session.otpAttempts = attempts;
-
-    if (entered !== ctx.session.otpCode) {
-      if (attempts >= 3) {
-        ctx.session.step = "idle";
-        ctx.session.otpEmail = undefined;
-        ctx.session.otpCode = undefined;
-        ctx.session.otpUserId = undefined;
-        await ctx.reply("❌ Too many wrong attempts. Please send /start to try again.");
-      } else {
-        await ctx.reply(`❌ Wrong code. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} remaining. Try again:`);
-      }
+  // ── Account linking — Step 2: Password verification ──────────
+  if (ctx.session.step === "awaiting_password") {
+    const email = ctx.session.authEmail;
+    const userId = ctx.session.authUserId;
+    if (!email || !userId) {
+      ctx.session.step = "idle";
+      await ctx.reply("❌ Session expired. Send /start to try again.");
       return;
     }
 
-    // OTP correct — link the account
-    const email = ctx.session.otpEmail!;
-    const userId = ctx.session.otpUserId!;
-    ctx.session.otpEmail = undefined;
-    ctx.session.otpCode = undefined;
-    ctx.session.otpUserId = undefined;
-    ctx.session.otpAttempts = undefined;
+    await ctx.reply("🔐 Verifying password...");
 
+    // Delete the password message for security (best effort)
+    try { await ctx.deleteMessage(); } catch { /* may fail without admin rights */ }
+
+    const isValid = await verifyPassword(email, text);
+
+    if (!isValid) {
+      await ctx.reply(
+        `❌ <b>Incorrect password.</b>\n\nPlease try again or send /start to restart.`,
+        { parse_mode: "HTML" }
+      );
+      // Stay in awaiting_password so they can retry
+      return;
+    }
+
+    // Password correct — link the account
     try {
       await saveTelegramChatId(userId, ctx.chat.id);
 
       ctx.session.linkedChatId = ctx.chat.id;
       ctx.session.linkedEmail = email;
-      ctx.session.linkedRole = ctx.session.selectedRole || "ngo";
+      ctx.session.linkedRole = ctx.session.selectedRole === "admin" ? "admin" : "ngo";
+      ctx.session.authEmail = undefined;
+      ctx.session.authUserId = undefined;
       ctx.session.step = "idle";
 
       const roleLabelMap: Record<string, string> = {
         admin: "Admin 🔐",
-        ngo: "NGO / Driver 🚐",
-        citizen: "Citizen 🧑",
+        ngo: "NGO Coordinator 🏢",
+        driver: "Driver 🚗",
       };
-      const roleLabel = roleLabelMap[ctx.session.linkedRole] || ctx.session.linkedRole;
+      const roleLabel = roleLabelMap[ctx.session.selectedRole || "ngo"] || "Linked";
+      const helpHint = ctx.session.selectedRole === "driver"
+        ? "Send /track to accept a rescue, or /help for all commands."
+        : "Send /help to see your available commands.";
+
       await ctx.reply(
-        `✅ <b>Account Linked Successfully!</b>\n\nWelcome, <b>${email}</b>!\nRole: ${roleLabel}\n\nSend /help to see your available commands.`,
+        `✅ <b>Account Linked!</b>\n\nWelcome, <b>${email}</b>!\nRole: ${roleLabel}\n\n${helpHint}`,
         { parse_mode: "HTML" }
       );
     } catch (err) {
-      console.error("[BOT] OTP link save error:", err);
-      await ctx.reply("Something went wrong saving your account link. Please try again.");
+      console.error("[BOT] Link save error:", err);
+      await ctx.reply("Something went wrong. Please try again.");
       ctx.session.step = "idle";
     }
+    return;
+  }
+
+  // ── Driver: Track rescue by ID/link ───────────────────────
+  if (ctx.session.step === "track_awaiting_id") {
+    ctx.session.step = "idle";
+    const rescueId = parseRescueId(text);
+    if (!rescueId) {
+      await ctx.reply(
+        `❌ Could not find a rescue ID in your message.\n\nPlease paste the full driver link or just the ID:\n<code>PAW-2026-4823</code>`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+    await handleAcceptRescue(ctx, rescueId);
     return;
   }
 
