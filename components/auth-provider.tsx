@@ -30,14 +30,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     /**
      * Fetch user role using the server-side API (which uses service role key).
      * This bypasses RLS on the profiles table — the anon client cannot read it.
+     * Always sets loading=false in finally so the dashboard never gets stuck.
      */
     const fetchRole = async (userId: string) => {
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
         const res = await fetch("/api/ngo/status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId }),
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
+
         const data = await res.json();
         if (data.status === "admin") {
           setRole("admin");
@@ -47,14 +54,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRole(null);
         }
       } catch {
-        // Fallback: try direct query (may fail due to RLS)
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", userId)
-          .single();
-        if (!error && data) {
-          setRole(data.role);
+        // Timeout or fetch failure — try direct query (may fail due to RLS)
+        try {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", userId)
+            .single();
+          if (!error && data) {
+            setRole(data.role);
+          } else {
+            setRole(null);
+          }
+        } catch {
+          setRole(null);
         }
       }
     };
@@ -62,10 +75,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchRole(session.user.id);
+      try {
+        if (session?.user) {
+          await fetchRole(session.user.id);
+        }
+      } finally {
+        setLoading(false); // Always clears loading — prevents stuck dashboard
       }
-      setLoading(false); // Only set loading=false AFTER role is resolved
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {

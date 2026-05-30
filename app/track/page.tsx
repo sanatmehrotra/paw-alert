@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Phone, Star, CheckCircle2, Circle, MapPin, Share2,
-  Wifi, WifiOff, Loader2,
+  Wifi, WifiOff, Loader2, Search, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
@@ -62,8 +63,11 @@ function statusToStep(status: string): number {
 
 function TrackInner() {
   const params = useSearchParams();
+  const router = useRouter();
   const reportIdParam = params.get("id");
 
+  const [searchInput, setSearchInput] = useState("");
+  const [searchError, setSearchError] = useState("");
   const [report, setReport] = useState<Report | null>(null);
   const [loadingReport, setLoadingReport] = useState(true);
 
@@ -79,14 +83,15 @@ function TrackInner() {
   // ── Fetch report ─────────────────────────────────────────────────
   useEffect(() => {
     async function loadReport() {
+      // If no ?id= param, don't auto-load any report — show search UI
+      if (!reportIdParam) {
+        setLoadingReport(false);
+        return;
+      }
       try {
         const res = await fetch("/api/reports");
         const all: any[] = await res.json();
-        let found: any = null;
-        if (reportIdParam) {
-          found = all.find(r => r.id === reportIdParam);
-        }
-        if (!found && all.length > 0) found = all[0];
+        const found = all.find(r => r.id === reportIdParam);
 
         if (found) {
           setReport(found as Report);
@@ -98,13 +103,15 @@ function TrackInner() {
             lastPingRef.current = found.van_updated_at
               ? new Date(found.van_updated_at).getTime()
               : Date.now() - 60000;
-            // Mark as live only if updated within last 30s
             const age = Date.now() - lastPingRef.current;
             setIsLive(age < 30000);
           }
+        } else {
+          setSearchError(`No rescue found with ID "${reportIdParam}". Please check the ID and try again.`);
         }
       } catch (err) {
         console.error(err);
+        setSearchError("Failed to load rescue. Please try again.");
       } finally {
         setLoadingReport(false);
       }
@@ -237,6 +244,73 @@ function TrackInner() {
     return (
       <div className="min-h-screen bg-paw-bg flex items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-paw-orange" />
+      </div>
+    );
+  }
+
+  // ── No rescue ID provided OR ID not found — show search UI
+  if (!report) {
+    const handleSearch = (e: React.FormEvent) => {
+      e.preventDefault();
+      const id = searchInput.trim().toUpperCase().replace(/^#/, "");
+      if (!id) return;
+      router.push(`/track?id=${encodeURIComponent(id)}`);
+    };
+
+    return (
+      <div className="min-h-screen bg-paw-bg flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <div className="rounded-2xl border border-paw-orange/20 bg-paw-card p-8 shadow-xl">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-paw-orange/10">
+                <Search className="h-6 w-6 text-paw-orange" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">Track a Rescue</h1>
+                <p className="text-sm text-paw-muted">Enter your Rescue ID to track live</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSearch} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-paw-muted mb-1.5">Rescue ID</label>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={e => { setSearchInput(e.target.value); setSearchError(""); }}
+                  placeholder="PAW-2026-4823"
+                  className="w-full px-4 py-3 rounded-xl border border-paw-orange/20 bg-paw-bg text-paw-text font-mono placeholder:text-paw-muted/50 focus:border-paw-orange focus:outline-none transition-colors text-sm uppercase"
+                  autoFocus
+                />
+              </div>
+
+              {(searchError || (reportIdParam && !report)) && (
+                <div className="flex items-start gap-2 rounded-lg bg-paw-red/10 border border-paw-red/20 px-4 py-3 text-sm text-paw-red">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{searchError || `No rescue found with ID "${reportIdParam}".`}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={!searchInput.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-paw-orange py-3 text-sm font-semibold text-white transition-all hover:bg-paw-orange/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Search className="h-4 w-4" />
+                Track Rescue
+              </button>
+            </form>
+
+            <p className="mt-4 text-xs text-paw-muted text-center">
+              Your Rescue ID was sent via Telegram when you submitted the report.
+              <br />It looks like <span className="font-mono text-paw-orange">PAW-2026-XXXX</span>
+            </p>
+          </div>
+        </motion.div>
       </div>
     );
   }
